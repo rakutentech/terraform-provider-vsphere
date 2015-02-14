@@ -62,13 +62,14 @@ The following arguments are supported.
 
 * `name` - (Required) Hostname of the virtual machine
 * `template` - (Required) VM template name
+* `vcpu` - (Required) A number of vCPUs
+* `memory` - (Required) Memory size in MB.
 * `datacenter` - (Optional) Datacenter name
 * `cluster` - (Optional) Cluster name, a cluster is a group of hosts.
+* `resource_pool` - (Optional) Resource pool name.
 * `datastore` - (Optional) Datastore name
-* `vcpu` - (Optional) A number of vCPUs
-* `memory` - (Optional) Memory size in MB. By default the same as VM.
 * `gateway` - (Optional) Gateway IP address.
-* `domain` - (Optional) Domain configuration.
+* `domain` - (Optional) Domain configuration. By default it's "vsphere.local".
 * `network_interface` - (Optional) Network configuration.
 
 Each `network_interface` supports the following:

@@ -27,6 +27,16 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 				Required: true,
 			},
 
+			"vcpu": &schema.Schema{
+				Type:     schema.TypeInt,
+				Required: true,
+			},
+
+			"memory": &schema.Schema{
+				Type:     schema.TypeInt,
+				Required: true,
+			},
+
 			"datacenter": &schema.Schema{
 				Type:     schema.TypeString,
 				Optional: true,
@@ -37,18 +47,13 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 				Optional: true,
 			},
 
-			"datastore": &schema.Schema{
+			"resource_pool": &schema.Schema{
 				Type:     schema.TypeString,
 				Optional: true,
 			},
 
-			"vcpu": &schema.Schema{
-				Type:     schema.TypeInt,
-				Optional: true,
-			},
-
-			"memory": &schema.Schema{
-				Type:     schema.TypeInt,
+			"datastore": &schema.Schema{
+				Type:     schema.TypeString,
 				Optional: true,
 			},
 
@@ -99,6 +104,8 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 	vm := VirtualMachine{
 		Name:     d.Get("name").(string),
 		Template: d.Get("template").(string),
+		VCPU:     d.Get("vcpu").(int),
+		MemoryMB: int64(d.Get("memory").(int)),
 	}
 
 	if v := d.Get("datacenter"); v != nil {
@@ -109,16 +116,12 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 		vm.Cluster = d.Get("cluster").(string)
 	}
 
+	if v := d.Get("resource_pool"); v != nil {
+		vm.ResourcePool = d.Get("resource_pool").(string)
+	}
+
 	if v := d.Get("datastore"); v != nil {
 		vm.Datastore = d.Get("datastore").(string)
-	}
-
-	if v := d.Get("vcpu"); v != nil {
-		vm.VCPU = d.Get("vcpu").(int)
-	}
-
-	if v := d.Get("memory"); v != nil {
-		vm.MemoryMB = int64(d.Get("memory").(int))
 	}
 
 	if v := d.Get("gateway"); v != nil {

@@ -24,6 +24,7 @@ type VirtualMachine struct {
 	Name              string
 	Datacenter        string
 	Cluster           string
+	ResourcePool      string
 	Datastore         string
 	VCPU              int
 	MemoryMB          int64
@@ -65,13 +66,6 @@ func (vm *VirtualMachine) RunVirtualMachine(c *govmomi.Client) error {
 	}
 
 	vmFolder := dcFolders.VmFolder
-
-	storage, err := getStorage(c, dcFolders.DatastoreFolder, vm.Datastore)
-	if err != nil {
-		return err
-	}
-	log.Printf("[DEBUG] storage: %v", storage)
-
 	template, err := getVirtualMachine(c, vmFolder, vm.Template)
 	if err != nil {
 		return err
@@ -79,20 +73,49 @@ func (vm *VirtualMachine) RunVirtualMachine(c *govmomi.Client) error {
 	log.Printf("[DEBUG] template: %v", template)
 
 	var datastore *govmomi.Datastore
-	if storage.Type == "StoragePod" {
-		datastore, err = findDatastoreForClone(c, storage, template, vmFolder)
+	if vm.Datastore == "" {
+		datastore, err = finder.DefaultDatastore()
+		if err != nil {
+			return err
+		}
+		log.Printf("[DEBUG] datastore: %v", datastore)
+	} else {
+		storage, err := getStorage(c, dcFolders.DatastoreFolder, vm.Datastore)
+		if err != nil {
+			return err
+		}
+		log.Printf("[DEBUG] storage: %v", storage)
+
+		if storage.Type == "StoragePod" {
+			datastore, err = findDatastoreForClone(c, storage, template, vmFolder)
+			if err != nil {
+				return err
+			}
+		}
+		log.Printf("[DEBUG] datastore: %v", datastore)
+	}
+
+	// find ResourcePool object
+	var resourcePool *govmomi.ResourcePool
+	if vm.ResourcePool == "" {
+		if vm.Cluster == "" {
+			resourcePool, err = finder.DefaultResourcePool()
+			if err != nil {
+				return err
+			}
+		} else {
+			resourcePool, err = finder.ResourcePool("*" + vm.Cluster + "/Resources")
+			if err != nil {
+				return err
+			}
+		}
+		log.Printf("[DEBUG] resource pool: %v", resourcePool)
+	} else {
+		resourcePool, err = finder.ResourcePool(vm.ResourcePool)
 		if err != nil {
 			return err
 		}
 	}
-
-	log.Printf("[DEBUG] datastore: %v", datastore)
-
-	resourcePool, err := finder.ResourcePool("*" + vm.Cluster + "/Resources")
-	if err != nil {
-		return err
-	}
-	log.Printf("[DEBUG] resource pool: %v", resourcePool)
 
 	relocateSpec, err := getVMRelocateSpec(resourcePool, datastore, template)
 	if err != nil {
