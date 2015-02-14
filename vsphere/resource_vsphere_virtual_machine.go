@@ -52,12 +52,12 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 				Optional: true,
 			},
 
-			"memory_reservation": &schema.Schema{
-				Type:     schema.TypeInt,
+			"gateway": &schema.Schema{
+				Type:     schema.TypeString,
 				Optional: true,
 			},
 
-			"gateway": &schema.Schema{
+			"domain": &schema.Schema{
 				Type:     schema.TypeString,
 				Optional: true,
 			},
@@ -121,16 +121,12 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 		vm.MemoryMB = int64(d.Get("memory").(int))
 	}
 
-	if v := d.Get("memory_reservation"); v != nil {
-		vm.MemoryReservation = int64(d.Get("memory_reservation").(int))
-	}
-
-	if v := d.Get("iops"); v != nil {
-		vm.IOPS = d.Get("iops").(int)
-	}
-
 	if v := d.Get("gateway"); v != nil {
 		vm.Gateway = d.Get("gateway").(string)
+	}
+
+	if v := d.Get("domain"); v != nil {
+		vm.Domain = d.Get("domain").(string)
 	}
 
 	if v := d.Get("network_interface"); v != nil {
@@ -152,36 +148,37 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 		return fmt.Errorf("error: %s", err)
 	}
 	d.SetId(vm.Name)
-	d.Set("name", vm.Name)
-	d.Set("datacenter", vm.Datacenter)
-	d.Set("cluster", vm.Cluster)
-	d.Set("datastore", vm.Datastore)
+	log.Printf("[INFO] Created virtual machine: %s", d.Id())
 
-	return nil
+	return resourceVSphereVirtualMachineRead(d, meta)
 }
 
 func resourceVSphereVirtualMachineRead(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*govmomi.Client)
+	var dc *govmomi.Datacenter
+	var err error
 
+	client := meta.(*govmomi.Client)
 	finder := find.NewFinder(client, true)
 
 	if v := d.Get("datacenter"); v != nil {
-		dc, err := finder.Datacenter(d.Get("datacenter").(string))
+		dc, err = finder.Datacenter(d.Get("datacenter").(string))
 		if err != nil {
 			return err
 		}
-		finder.SetDatacenter(dc)
-		d.Set("datacenter", dc)
 	} else {
-		dc, err := finder.DefaultDatacenter()
+		dc, err = finder.DefaultDatacenter()
 		if err != nil {
 			return err
 		}
-		finder.SetDatacenter(dc)
-		d.Set("datacenter", dc)
 	}
 
-	vm, err := finder.VirtualMachine(d.Get("name").(string))
+	d.Set("datacenter", dc)
+	dcFolders, err := dc.Folders()
+	if err != nil {
+		return err
+	}
+
+	vm, err := getVirtualMachine(client, dcFolders.VmFolder, d.Get("name").(string))
 	if err != nil {
 		log.Printf("[ERROR] Virtual machine not found: %s", d.Get("name").(string))
 		d.SetId("")
@@ -199,15 +196,27 @@ func resourceVSphereVirtualMachineRead(d *schema.ResourceData, meta interface{})
 }
 
 func resourceVSphereVirtualMachineDelete(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*govmomi.Client)
-	log.Printf("[INFO] Deleting virtual machine: %s, %s", d.Get("name").(string), d.Id())
+	var dc *govmomi.Datacenter
+	var err error
 
+	client := meta.(*govmomi.Client)
 	finder := find.NewFinder(client, true)
-	dc, err := finder.Datacenter(d.Get("datacenter").(string))
-	if err != nil {
-		return fmt.Errorf("error %s", err)
+	log.Printf("[INFO] Deleting virtual machine: %s", d.Id())
+
+	if v := d.Get("datacenter"); v != nil {
+		dc, err = finder.Datacenter(d.Get("datacenter").(string))
+		if err != nil {
+			return err
+		}
+	} else {
+		dc, err = finder.DefaultDatacenter()
+		if err != nil {
+			return err
+		}
 	}
 
+	finder.SetDatacenter(dc)
+	d.Set("datacenter", dc)
 	dcFolders, err := dc.Folders()
 	if err != nil {
 		return fmt.Errorf("error %s", err)

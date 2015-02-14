@@ -10,6 +10,7 @@ import (
 
 const (
 	DefaultTimeZone = "Etc/UTC"
+	DefaultDomain   = "vsphere.local"
 )
 
 type NetworkInterface struct {
@@ -26,18 +27,33 @@ type VirtualMachine struct {
 	Datastore         string
 	VCPU              int
 	MemoryMB          int64
-	MemoryReservation int64
-	IOPS              int
 	Template          string
 	NetworkInterfaces []NetworkInterface
 	Gateway           string
+	Domain            string
 	DNSSuffixes       []string
 	DNSServers        []string
 }
 
 func (vm *VirtualMachine) RunVirtualMachine(c *govmomi.Client) error {
-	finder := find.NewFinder(c, true)
+	if len(vm.DNSServers) == 0 {
+		vm.DNSServers = []string{
+			"8.8.8.8",
+			"8.8.4.4",
+		}
+	}
 
+	if len(vm.DNSSuffixes) == 0 {
+		vm.DNSSuffixes = []string{
+			DefaultDomain,
+		}
+	}
+
+	if vm.Domain == "" {
+		vm.Domain = DefaultDomain
+	}
+
+	finder := find.NewFinder(c, true)
 	dc, err := getDatacenter(finder, vm.Datacenter)
 	if err != nil {
 		return err
@@ -120,14 +136,8 @@ func (vm *VirtualMachine) RunVirtualMachine(c *govmomi.Client) error {
 	}
 	log.Printf("[DEBUG] virtual machine config spec: %v", configSpec)
 
-	// configure memory reservation
-	configSpec.MemoryAllocation = &types.ResourceAllocationInfo{
-		Reservation: int64(vm.MemoryMB * vm.MemoryReservation / 100),
-	}
-	log.Printf("[DEBUG] memory allocation: %v", configSpec.MemoryAllocation)
-
 	// make custom spec
-	customSpec := createCustomizationSpec(vm.Name, vm.DNSSuffixes, vm.DNSServers, networkConfigs)
+	customSpec := createCustomizationSpec(vm.Name, vm.Domain, vm.DNSSuffixes, vm.DNSServers, networkConfigs)
 	log.Printf("[DEBUG] custom spec: %v", customSpec)
 
 	// make vm clone spec
@@ -296,13 +306,13 @@ func getVMRelocateSpec(rp *govmomi.ResourcePool, ds *govmomi.Datastore, vm *govm
 	}, nil
 }
 
-func createCustomizationSpec(name string, suffixes, servers []string, nics []types.CustomizationAdapterMapping) types.CustomizationSpec {
+func createCustomizationSpec(name, domain string, suffixes, servers []string, nics []types.CustomizationAdapterMapping) types.CustomizationSpec {
 	return types.CustomizationSpec{
 		Identity: &types.CustomizationLinuxPrep{
 			HostName: &types.CustomizationFixedName{
 				Name: name,
 			},
-			Domain:     "vsphere.local",
+			Domain:     domain,
 			TimeZone:   DefaultTimeZone,
 			HwClockUTC: true,
 		},

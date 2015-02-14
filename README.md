@@ -68,9 +68,10 @@ The following arguments are supported.
 * `vcpu` - (Optional) A number of vCPUs
 * `memory` - (Optional) Memory size in MB. By default the same as VM.
 * `gateway` - (Optional) Gateway IP address.
-* `network` - (Optional) Network configuration.
+* `domain` - (Optional) Domain configuration.
+* `network_interface` - (Optional) Network configuration.
 
-Each `network` supports the following:
+Each `network_interface` supports the following:
 
 * `device_name` - (Required) Network interface device name
 * `label` - (Required) Network label name
