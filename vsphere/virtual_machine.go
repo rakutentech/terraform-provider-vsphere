@@ -134,9 +134,13 @@ func (vm *VirtualMachine) RunVirtualMachine(c *govmomi.Client) error {
 		}
 		networkDevices = append(networkDevices, device)
 
-		// network config
-		config := types.CustomizationAdapterMapping{
-			Adapter: types.CustomizationIPSettings{
+		var ipSetting types.CustomizationIPSettings
+		if network.IPAddress == "" {
+			ipSetting = types.CustomizationIPSettings{
+				Ip: &types.CustomizationDhcpIpGenerator{},
+			}
+		} else {
+			ipSetting = types.CustomizationIPSettings{
 				Gateway: []string{
 					vm.Gateway,
 				},
@@ -144,7 +148,12 @@ func (vm *VirtualMachine) RunVirtualMachine(c *govmomi.Client) error {
 					IpAddress: network.IPAddress,
 				},
 				SubnetMask: network.SubnetMask,
-			},
+			}
+		}
+
+		// network config
+		config := types.CustomizationAdapterMapping{
+			Adapter: ipSetting,
 		}
 		networkConfigs = append(networkConfigs, config)
 	}

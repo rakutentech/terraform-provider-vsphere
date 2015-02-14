@@ -67,9 +67,21 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 				Optional: true,
 			},
 
-			"network_interface": &schema.Schema{
+			"dns_suffix": &schema.Schema{
 				Type:     schema.TypeList,
 				Optional: true,
+				Elem:     &schema.Schema{Type: schema.TypeString},
+			},
+
+			"dns_server": &schema.Schema{
+				Type:     schema.TypeList,
+				Optional: true,
+				Elem:     &schema.Schema{Type: schema.TypeString},
+			},
+
+			"network_interface": &schema.Schema{
+				Type:     schema.TypeList,
+				Required: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"device_name": &schema.Schema{
@@ -84,12 +96,12 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 
 						"ip_address": &schema.Schema{
 							Type:     schema.TypeString,
-							Required: true,
+							Optional: true,
 						},
 
 						"subnet_mask": &schema.Schema{
 							Type:     schema.TypeString,
-							Required: true,
+							Optional: true,
 						},
 					},
 				},
@@ -132,19 +144,37 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 		vm.Domain = d.Get("domain").(string)
 	}
 
-	if v := d.Get("network_interface"); v != nil {
-		networksCount := d.Get("network_interface.#").(int)
-		networks := make([]NetworkInterface, networksCount)
-		for i := 0; i < networksCount; i++ {
-			prefix := fmt.Sprintf("network_interface.%d", i)
-			networks[i].DeviceName = d.Get(prefix + ".device_name").(string)
-			networks[i].Label = d.Get(prefix + ".label").(string)
+	dns_suffix := d.Get("dns_suffix.#").(int)
+	if dns_suffix > 0 {
+		vm.DNSSuffixes = make([]string, 0, dns_suffix)
+		for i := 0; i < dns_suffix; i++ {
+			s := fmt.Sprintf("dns_suffix.%d", i)
+			vm.DNSSuffixes = append(vm.DNSSuffixes, d.Get(s).(string))
+		}
+	}
+
+	dns_server := d.Get("dns_server.#").(int)
+	if dns_server > 0 {
+		vm.DNSServers = make([]string, 0, dns_server)
+		for i := 0; i < dns_server; i++ {
+			s := fmt.Sprintf("dns_server.%d", i)
+			vm.DNSServers = append(vm.DNSServers, d.Get(s).(string))
+		}
+	}
+
+	networksCount := d.Get("network_interface.#").(int)
+	networks := make([]NetworkInterface, networksCount)
+	for i := 0; i < networksCount; i++ {
+		prefix := fmt.Sprintf("network_interface.%d", i)
+		networks[i].DeviceName = d.Get(prefix + ".device_name").(string)
+		networks[i].Label = d.Get(prefix + ".label").(string)
+		if v := d.Get(prefix + ".ip_address"); v != nil {
 			networks[i].IPAddress = d.Get(prefix + ".ip_address").(string)
 			networks[i].SubnetMask = d.Get(prefix + ".subnet_mask").(string)
 		}
-		vm.NetworkInterfaces = networks
-		log.Printf("[DEBUG] network_interface init: %v", networks)
 	}
+	vm.NetworkInterfaces = networks
+	log.Printf("[DEBUG] network_interface init: %v", networks)
 
 	err := vm.RunVirtualMachine(client)
 	if err != nil {

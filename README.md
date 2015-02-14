@@ -70,14 +70,32 @@ The following arguments are supported.
 * `datastore` - (Optional) Datastore name
 * `gateway` - (Optional) Gateway IP address.
 * `domain` - (Optional) Domain configuration. By default it's "vsphere.local".
-* `network_interface` - (Optional) Network configuration.
+* `dns_suffix` - (Optional) List of DNS suffix. By default it's `["vsphere.local"]`.
+* `dns_server` - (Optional) List of DNS server. By default it's `["8.8.8.8", "8.8.4.4"]`.
+* `network_interface` - (Required) Network configuration.
 
 Each `network_interface` supports the following:
 
-* `device_name` - (Required) Network interface device name
-* `label` - (Required) Network label name
-* `ip_address` - (Required) IP address
-* `subnet_mask` - (Required) Subnet mask
+* `device_name` - (Required) Network interface device name.
+* `label` - (Required) Network label name.
+* `ip_address` - (Optional) IP address, By default it's DHCP.
+* `subnet_mask` - (Optional) Subnet mask.
+
+
+e.g.
+
+```
+resource "vsphere_virtual_machine" "default" {
+    name = "VM name"
+    template = "centos-6.6-x86_64"    # Template name
+    vcpu = 2
+    memory = 4096
+    network {
+        device_name = "NIC name"      # e.g. eth0
+        label = "Network label name"
+    }
+}
+```
 
 
 ## Contribution
