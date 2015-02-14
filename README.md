@@ -1,11 +1,11 @@
 terraform-provider-vsphere
 ==========================
 
-Terraform Custom Provider for VMWare vSphere
+Terraform Custom Provider for VMware vSphere
 
 ## Description
 
-This project is a terraform custom provider for VMWare vSphere. This is work in progress. 
+This project is a terraform custom provider for VMware vSphere. This is work in progress. 
 This current version only supports creation and deletion of virtual machine with VM template.
 
 ## Requirement
@@ -17,6 +17,8 @@ This current version only supports creation and deletion of virtual machine with
 
 ### Provider Configuration
 
+#### `vsphere`
+
 ```
 provider "vsphere" {
     user = "${var.vsphere_user}"
@@ -25,7 +27,7 @@ provider "vsphere" {
 }
 ```
 
-#### Argument Reference
+##### Argument Reference
 
 The following arguments are supported.
 
@@ -35,7 +37,7 @@ The following arguments are supported.
 
 ### Resource Configuration
 
-vsphere_virtual_machine
+#### `vsphere_virtual_machine`
 
 ```
 resource "vsphere_virtual_machine" "default" {
@@ -47,7 +49,7 @@ resource "vsphere_virtual_machine" "default" {
     vcpu = 2
     memory = 4096
     gateway = "Gateway ip address"
-    network {
+    network_interface {
         device_name = "NIC name"      # e.g. eth0
         label = "Network label name"
         ip_address = "IP address"
@@ -56,7 +58,7 @@ resource "vsphere_virtual_machine" "default" {
 }
 ```
 
-#### Argument Reference
+##### Argument Reference
 
 The following arguments are supported.
 
@@ -64,35 +66,35 @@ The following arguments are supported.
 * `template` - (Required) VM template name
 * `vcpu` - (Required) A number of vCPUs
 * `memory` - (Required) Memory size in MB.
+* `network_interface` - (Required) Network configuration.
 * `datacenter` - (Optional) Datacenter name
 * `cluster` - (Optional) Cluster name, a cluster is a group of hosts.
 * `resource_pool` - (Optional) Resource pool name.
 * `datastore` - (Optional) Datastore name
-* `gateway` - (Optional) Gateway IP address.
-* `domain` - (Optional) Domain configuration. By default it's "vsphere.local".
-* `dns_suffix` - (Optional) List of DNS suffix. By default it's `["vsphere.local"]`.
-* `dns_server` - (Optional) List of DNS server. By default it's `["8.8.8.8", "8.8.4.4"]`.
-* `network_interface` - (Required) Network configuration.
+* `gateway` - (Optional) Gateway IP address. If you use the static IP address, it's required.
+* `domain` - (Optional) Domain configuration. By default, it's "vsphere.local".
+* `dns_suffix` - (Optional) List of DNS suffix. By default, it's `["vsphere.local"]`.
+* `dns_server` - (Optional) List of DNS server. By default, it's `["8.8.8.8", "8.8.4.4"]`.
 
 Each `network_interface` supports the following:
 
 * `device_name` - (Required) Network interface device name.
 * `label` - (Required) Network label name.
-* `ip_address` - (Optional) IP address, By default it's DHCP.
-* `subnet_mask` - (Optional) Subnet mask.
+* `ip_address` - (Optional) IP address. DHCP configuration in default. If you use the static IP address, it's required.
+* `subnet_mask` - (Optional) Subnet mask. If you use the static IP address, it's required.
 
 
-e.g.
+For example
 
 ```
 resource "vsphere_virtual_machine" "default" {
-    name = "VM name"
+    name = "foo-1"
     template = "centos-6.6-x86_64"    # Template name
     vcpu = 2
     memory = 4096
-    network {
-        device_name = "NIC name"      # e.g. eth0
-        label = "Network label name"
+    network_interface {
+        device_name = "eth0"      # e.g. eth0
+        label = "VM Network"
     }
 }
 ```
