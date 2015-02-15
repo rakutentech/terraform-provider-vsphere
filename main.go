@@ -1,8 +1,8 @@
 package main
 
 import (
-	"git.rakuten-it.com/tf/terraform-provider-vsphere/vsphere"
 	"github.com/hashicorp/terraform/plugin"
+	"github.com/rakutentech/terraform-provider-vsphere/vsphere"
 )
 
 func main() {
