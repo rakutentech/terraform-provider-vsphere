@@ -192,17 +192,9 @@ func resourceVSphereVirtualMachineRead(d *schema.ResourceData, meta interface{})
 
 	client := meta.(*govmomi.Client)
 	finder := find.NewFinder(client, true)
-
-	if v := d.Get("datacenter"); v != nil {
-		dc, err = finder.Datacenter(d.Get("datacenter").(string))
-		if err != nil {
-			return err
-		}
-	} else {
-		dc, err = finder.DefaultDatacenter()
-		if err != nil {
-			return err
-		}
+	dc, err = getDatacenter(finder, d.Get("datacenter").(string))
+	if err != nil {
+		return err
 	}
 
 	d.Set("datacenter", dc)
@@ -234,41 +226,32 @@ func resourceVSphereVirtualMachineDelete(d *schema.ResourceData, meta interface{
 
 	client := meta.(*govmomi.Client)
 	finder := find.NewFinder(client, true)
-	log.Printf("[INFO] Deleting virtual machine: %s", d.Id())
-
-	if v := d.Get("datacenter"); v != nil {
-		dc, err = finder.Datacenter(d.Get("datacenter").(string))
-		if err != nil {
-			return err
-		}
-	} else {
-		dc, err = finder.DefaultDatacenter()
-		if err != nil {
-			return err
-		}
+	dc, err = getDatacenter(finder, d.Get("datacenter").(string))
+	if err != nil {
+		return err
 	}
 
-	finder.SetDatacenter(dc)
 	d.Set("datacenter", dc)
 	dcFolders, err := dc.Folders()
 	if err != nil {
-		return fmt.Errorf("error %s", err)
+		return err
 	}
 
-	vmRef, err := client.SearchIndex().FindChild(dcFolders.VmFolder, d.Get("name").(string))
+	vm, err := getVirtualMachine(client, dcFolders.VmFolder, d.Get("name").(string))
 	if err != nil {
-		return fmt.Errorf("error %s", err)
+		return err
 	}
 
-	vm := govmomi.NewVirtualMachine(client, vmRef.Reference())
+	log.Printf("[INFO] Deleting virtual machine: %s", d.Id())
+
 	_, err = vm.PowerOff()
 	if err != nil {
-		return fmt.Errorf("error %s", err)
+		return err
 	}
 
 	_, err = vm.Destroy()
 	if err != nil {
-		return fmt.Errorf("error %s", err)
+		return err
 	}
 
 	d.SetId("")
