@@ -192,11 +192,7 @@ func (vm *VirtualMachine) RunVirtualMachine(c *govmomi.Client) error {
 		return err
 	}
 
-	// newVM, err := getVirtualMachine(vm.Name)
 	newVM, err := getVirtualMachine(c, vmFolder, vm.Name)
-	if err != nil {
-		return err
-	}
 	if err != nil {
 		return err
 	}
@@ -338,6 +334,7 @@ func getVMRelocateSpec(rp *govmomi.ResourcePool, ds *govmomi.Datastore, vm *govm
 	}, nil
 }
 
+// createCustomizationSpec creates the CustomizationSpec object.
 func createCustomizationSpec(name, domain string, suffixes, servers []string, nics []types.CustomizationAdapterMapping) types.CustomizationSpec {
 	return types.CustomizationSpec{
 		Identity: &types.CustomizationLinuxPrep{

@@ -20,6 +20,6 @@ script:
   - go test -v -covermode=count -coverprofile=coverage.out ./vsphere
   - goveralls -coverprofile=coverage.out -service=travis-ci -repotoken=$COVERALLS_TOKEN
 
-# after_success:
-#   - gox -output "dist/{{.OS}}_{{.Arch}}_{{.Dir}}"
-#   - ghr --username rakutentech --token $GITHUB_TOKEN --replace --prerelease --debug pre-release dist/
+after_success:
+  - gox -output "dist/{{.OS}}_{{.Arch}}_{{.Dir}}"
+  - ghr --username rakutentech --token $GITHUB_TOKEN --replace --prerelease --debug pre-release dist/
