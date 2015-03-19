@@ -133,7 +133,6 @@ resource "vsphere_virtual_machine" "foobar" {
     memory = 4096
     gateway = "192.168.0.254"
     network_interface {
-        device_name = "eth0"
         label = "%s"
         ip_address = "192.168.0.10"
         subnet_mask = "255.255.255.0"

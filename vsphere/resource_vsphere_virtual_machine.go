@@ -84,11 +84,6 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 				Required: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"device_name": &schema.Schema{
-							Type:     schema.TypeString,
-							Required: true,
-						},
-
 						"label": &schema.Schema{
 							Type:     schema.TypeString,
 							Required: true,
@@ -166,7 +161,6 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 	networks := make([]NetworkInterface, networksCount)
 	for i := 0; i < networksCount; i++ {
 		prefix := fmt.Sprintf("network_interface.%d", i)
-		networks[i].DeviceName = d.Get(prefix + ".device_name").(string)
 		networks[i].Label = d.Get(prefix + ".label").(string)
 		if v := d.Get(prefix + ".ip_address"); v != nil {
 			networks[i].IPAddress = d.Get(prefix + ".ip_address").(string)
