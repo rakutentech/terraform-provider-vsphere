@@ -14,13 +14,21 @@ Terraform Custom Provider for VMware vSphere
 
 ## Description
 
-This project is a terraform custom provider for VMware vSphere. This is work in progress. 
-This current version only supports creation and deletion of virtual machine with VM template.
+This project is a terraform custom provider for VMware vSphere. This is work in
+progress. This current version only supports creation and deletion of virtual
+machine with VM template.
 
 ## Requirement
 
 * [hashicorp/terraform](https://github.com/hashicorp/terraform)
 * [vmware/govmomi](https://github.com/vmware/govmomi)
+
+### VM template specification
+
+In this use case, please don't include network adapters in VM template. When 
+deploying a new virtual machine, this provider adds new network adapters to the
+new virtual machine. Supported network adapter type in the current version is 
+VMXNET 3 only.
 
 ## Usage
 
