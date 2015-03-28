@@ -5,7 +5,9 @@ import (
 
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
+	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vim25/types"
+	"golang.org/x/net/context"
 )
 
 const (
@@ -54,13 +56,13 @@ func (vm *VirtualMachine) RunVirtualMachine(c *govmomi.Client) error {
 		vm.Domain = DefaultDomain
 	}
 
-	finder := find.NewFinder(c, true)
+	finder := find.NewFinder(c.Client, true)
 	dc, err := getDatacenter(finder, vm.Datacenter)
 	if err != nil {
 		return err
 	}
 	finder = finder.SetDatacenter(dc)
-	dcFolders, err := dc.Folders()
+	dcFolders, err := dc.Folders(context.TODO())
 	if err != nil {
 		return err
 	}
@@ -72,9 +74,9 @@ func (vm *VirtualMachine) RunVirtualMachine(c *govmomi.Client) error {
 	}
 	log.Printf("[DEBUG] template: %v", template)
 
-	var datastore *govmomi.Datastore
+	var datastore *object.Datastore
 	if vm.Datastore == "" {
-		datastore, err = finder.DefaultDatastore()
+		datastore, err = finder.DefaultDatastore(context.TODO())
 		if err != nil {
 			return err
 		}
@@ -96,22 +98,22 @@ func (vm *VirtualMachine) RunVirtualMachine(c *govmomi.Client) error {
 	}
 
 	// find ResourcePool object
-	var resourcePool *govmomi.ResourcePool
+	var resourcePool *object.ResourcePool
 	if vm.ResourcePool == "" {
 		if vm.Cluster == "" {
-			resourcePool, err = finder.DefaultResourcePool()
+			resourcePool, err = finder.DefaultResourcePool(context.TODO())
 			if err != nil {
 				return err
 			}
 		} else {
-			resourcePool, err = finder.ResourcePool("*" + vm.Cluster + "/Resources")
+			resourcePool, err = finder.ResourcePool(context.TODO(), "*"+vm.Cluster+"/Resources")
 			if err != nil {
 				return err
 			}
 		}
 		log.Printf("[DEBUG] resource pool: %v", resourcePool)
 	} else {
-		resourcePool, err = finder.ResourcePool(vm.ResourcePool)
+		resourcePool, err = finder.ResourcePool(context.TODO(), vm.ResourcePool)
 		if err != nil {
 			return err
 		}
@@ -182,12 +184,12 @@ func (vm *VirtualMachine) RunVirtualMachine(c *govmomi.Client) error {
 	}
 	log.Printf("[DEBUG] clone spec: %v", cloneSpec)
 
-	task, err := template.Clone(vmFolder, vm.Name, cloneSpec)
+	task, err := template.Clone(context.TODO(), vmFolder, vm.Name, cloneSpec)
 	if err != nil {
 		return err
 	}
 
-	err = task.Wait()
+	err = task.Wait(context.TODO())
 	if err != nil {
 		return err
 	}
@@ -198,7 +200,7 @@ func (vm *VirtualMachine) RunVirtualMachine(c *govmomi.Client) error {
 	}
 	log.Printf("[DEBUG] new vm: %v", newVM)
 
-	ip, err := newVM.WaitForIP()
+	ip, err := newVM.WaitForIP(context.TODO())
 	if err != nil {
 		return err
 	}
@@ -207,7 +209,7 @@ func (vm *VirtualMachine) RunVirtualMachine(c *govmomi.Client) error {
 	return nil
 }
 
-func findDatastoreForClone(c *govmomi.Client, d *types.ManagedObjectReference, t *govmomi.VirtualMachine, f *govmomi.Folder) (*govmomi.Datastore, error) {
+func findDatastoreForClone(c *govmomi.Client, d *types.ManagedObjectReference, t *object.VirtualMachine, f *object.Folder) (*object.Datastore, error) {
 	tr := t.Reference()
 	fr := f.Reference()
 
@@ -226,23 +228,23 @@ func findDatastoreForClone(c *govmomi.Client, d *types.ManagedObjectReference, t
 		Folder:    &fr,
 	}
 
-	srm := c.StorageResourceManager()
-	result, err := srm.RecommendDatastores(sps)
+	srm := object.NewStorageResourceManager(c.Client)
+	result, err := srm.RecommendDatastores(context.TODO(), sps)
 	if err != nil {
 		return nil, err
 	}
 	spa := result.Recommendations[0].Action[0].(*types.StoragePlacementAction)
-	datastore := govmomi.NewDatastore(c, spa.Destination)
+	datastore := object.NewDatastore(c.Client, spa.Destination)
 
 	return datastore, nil
 }
 
 func networkDevice(f *find.Finder, label string) (*types.VirtualDeviceConfigSpec, error) {
-	network, err := f.NetworkList("*" + label)
+	network, err := f.NetworkList(context.TODO(), "*"+label)
 	if err != nil {
 		return nil, err
 	}
-	backing, err := network[0].EthernetCardBackingInfo()
+	backing, err := network[0].EthernetCardBackingInfo(context.TODO())
 	if err != nil {
 		return nil, err
 	}
@@ -265,15 +267,15 @@ func networkDevice(f *find.Finder, label string) (*types.VirtualDeviceConfigSpec
 }
 
 // getDatacenter gets Datacenter object.
-func getDatacenter(f *find.Finder, name string) (*govmomi.Datacenter, error) {
+func getDatacenter(f *find.Finder, name string) (*object.Datacenter, error) {
 	if name != "" {
-		dc, err := f.Datacenter(name)
+		dc, err := f.Datacenter(context.TODO(), name)
 		if err != nil {
 			return nil, err
 		}
 		return dc, nil
 	} else {
-		dc, err := f.DefaultDatacenter()
+		dc, err := f.DefaultDatacenter(context.TODO())
 		if err != nil {
 			return nil, err
 		}
@@ -281,9 +283,9 @@ func getDatacenter(f *find.Finder, name string) (*govmomi.Datacenter, error) {
 	}
 }
 
-func getStorage(c *govmomi.Client, f *govmomi.Folder, name string) (*types.ManagedObjectReference, error) {
-	s := c.SearchIndex()
-	storageRef, err := s.FindChild(f, name)
+func getStorage(c *govmomi.Client, f *object.Folder, name string) (*types.ManagedObjectReference, error) {
+	s := object.NewSearchIndex(c.Client)
+	storageRef, err := s.FindChild(context.TODO(), f, name)
 	if err != nil {
 		return nil, err
 	}
@@ -292,20 +294,20 @@ func getStorage(c *govmomi.Client, f *govmomi.Folder, name string) (*types.Manag
 }
 
 // getVirtualMachine finds VirtualMachine or Template object
-func getVirtualMachine(c *govmomi.Client, f *govmomi.Folder, name string) (*govmomi.VirtualMachine, error) {
-	s := c.SearchIndex()
-	vmRef, err := s.FindChild(f, name)
+func getVirtualMachine(c *govmomi.Client, f *object.Folder, name string) (*object.VirtualMachine, error) {
+	s := object.NewSearchIndex(c.Client)
+	vmRef, err := s.FindChild(context.TODO(), f, name)
 	if err != nil {
 		return nil, err
 	}
-	vm := govmomi.NewVirtualMachine(c, vmRef.Reference())
+	vm := object.NewVirtualMachine(c.Client, vmRef.Reference())
 	return vm, nil
 }
 
-func getVMRelocateSpec(rp *govmomi.ResourcePool, ds *govmomi.Datastore, vm *govmomi.VirtualMachine) (types.VirtualMachineRelocateSpec, error) {
+func getVMRelocateSpec(rp *object.ResourcePool, ds *object.Datastore, vm *object.VirtualMachine) (types.VirtualMachineRelocateSpec, error) {
 	var key int
 
-	devices, err := vm.Device()
+	devices, err := vm.Device(context.TODO())
 	if err != nil {
 		return types.VirtualMachineRelocateSpec{}, err
 	}
