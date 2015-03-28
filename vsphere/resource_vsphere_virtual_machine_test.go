@@ -9,6 +9,8 @@ import (
 	"github.com/hashicorp/terraform/terraform"
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
+	"github.com/vmware/govmomi/object"
+	"golang.org/x/net/context"
 )
 
 func TestAccVSphereVirtualMachine_Basic(t *testing.T) {
@@ -48,24 +50,24 @@ func TestAccVSphereVirtualMachine_Basic(t *testing.T) {
 
 func testAccCheckVSphereVirtualMachineDestroy(s *terraform.State) error {
 	client := testAccProvider.Meta().(*govmomi.Client)
-	finder := find.NewFinder(client, true)
+	finder := find.NewFinder(client.Client, true)
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "vsphere_virtual_machine" {
 			continue
 		}
 
-		dc, err := finder.Datacenter(rs.Primary.Attributes["datacenter"])
+		dc, err := finder.Datacenter(context.TODO(), rs.Primary.Attributes["datacenter"])
 		if err != nil {
 			return fmt.Errorf("error %s", err)
 		}
 
-		dcFolders, err := dc.Folders()
+		dcFolders, err := dc.Folders(context.TODO())
 		if err != nil {
 			return fmt.Errorf("error %s", err)
 		}
 
-		_, err = client.SearchIndex().FindChild(dcFolders.VmFolder, rs.Primary.Attributes["name"])
+		_, err = object.NewSearchIndex(client.Client).FindChild(context.TODO(), dcFolders.VmFolder, rs.Primary.Attributes["name"])
 		if err == nil {
 			return fmt.Errorf("Record still exists")
 		}
@@ -86,19 +88,19 @@ func testAccCheckVSphereVirtualMachineExists(n string, vm *VirtualMachine) resou
 		}
 
 		client := testAccProvider.Meta().(*govmomi.Client)
-		finder := find.NewFinder(client, true)
+		finder := find.NewFinder(client.Client, true)
 
-		dc, err := finder.Datacenter(rs.Primary.Attributes["datacenter"])
+		dc, err := finder.Datacenter(context.TODO(), rs.Primary.Attributes["datacenter"])
 		if err != nil {
 			return fmt.Errorf("error %s", err)
 		}
 
-		dcFolders, err := dc.Folders()
+		dcFolders, err := dc.Folders(context.TODO())
 		if err != nil {
 			return fmt.Errorf("error %s", err)
 		}
 
-		_, err = client.SearchIndex().FindChild(dcFolders.VmFolder, rs.Primary.Attributes["name"])
+		_, err = object.NewSearchIndex(client.Client).FindChild(context.TODO(), dcFolders.VmFolder, rs.Primary.Attributes["name"])
 		/*
 			vmRef, err := client.SearchIndex().FindChild(dcFolders.VmFolder, rs.Primary.Attributes["name"])
 			if err != nil {
@@ -133,7 +135,6 @@ resource "vsphere_virtual_machine" "foobar" {
     memory = 4096
     gateway = "192.168.0.254"
     network_interface {
-        device_name = "eth0"
         label = "%s"
         ip_address = "192.168.0.10"
         subnet_mask = "255.255.255.0"

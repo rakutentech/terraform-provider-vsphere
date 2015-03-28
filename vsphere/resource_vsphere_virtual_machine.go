@@ -7,7 +7,10 @@ import (
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
+	"github.com/vmware/govmomi/object"
+	"github.com/vmware/govmomi/property"
 	"github.com/vmware/govmomi/vim25/mo"
+	"golang.org/x/net/context"
 )
 
 func resourceVSphereVirtualMachine() *schema.Resource {
@@ -84,11 +87,6 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 				Required: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"device_name": &schema.Schema{
-							Type:     schema.TypeString,
-							Required: true,
-						},
-
 						"label": &schema.Schema{
 							Type:     schema.TypeString,
 							Required: true,
@@ -166,7 +164,6 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 	networks := make([]NetworkInterface, networksCount)
 	for i := 0; i < networksCount; i++ {
 		prefix := fmt.Sprintf("network_interface.%d", i)
-		networks[i].DeviceName = d.Get(prefix + ".device_name").(string)
 		networks[i].Label = d.Get(prefix + ".label").(string)
 		if v := d.Get(prefix + ".ip_address"); v != nil {
 			networks[i].IPAddress = d.Get(prefix + ".ip_address").(string)
@@ -187,18 +184,18 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 }
 
 func resourceVSphereVirtualMachineRead(d *schema.ResourceData, meta interface{}) error {
-	var dc *govmomi.Datacenter
+	var dc *object.Datacenter
 	var err error
 
 	client := meta.(*govmomi.Client)
-	finder := find.NewFinder(client, true)
+	finder := find.NewFinder(client.Client, true)
 	dc, err = getDatacenter(finder, d.Get("datacenter").(string))
 	if err != nil {
 		return err
 	}
 
 	d.Set("datacenter", dc)
-	dcFolders, err := dc.Folders()
+	dcFolders, err := dc.Folders(context.TODO())
 	if err != nil {
 		return err
 	}
@@ -212,7 +209,8 @@ func resourceVSphereVirtualMachineRead(d *schema.ResourceData, meta interface{})
 
 	var mvm mo.VirtualMachine
 
-	err = client.Properties(vm.Reference(), []string{"summary"}, &mvm)
+	collector := property.DefaultCollector(client.Client)
+	err = collector.RetrieveOne(context.TODO(), vm.Reference(), []string{"summary"}, &mvm)
 
 	d.Set("memory", mvm.Summary.Config.MemorySizeMB)
 	d.Set("cpu", mvm.Summary.Config.NumCpu)
@@ -221,18 +219,18 @@ func resourceVSphereVirtualMachineRead(d *schema.ResourceData, meta interface{})
 }
 
 func resourceVSphereVirtualMachineDelete(d *schema.ResourceData, meta interface{}) error {
-	var dc *govmomi.Datacenter
+	var dc *object.Datacenter
 	var err error
 
 	client := meta.(*govmomi.Client)
-	finder := find.NewFinder(client, true)
+	finder := find.NewFinder(client.Client, true)
 	dc, err = getDatacenter(finder, d.Get("datacenter").(string))
 	if err != nil {
 		return err
 	}
 
 	d.Set("datacenter", dc)
-	dcFolders, err := dc.Folders()
+	dcFolders, err := dc.Folders(context.TODO())
 	if err != nil {
 		return err
 	}
@@ -244,12 +242,12 @@ func resourceVSphereVirtualMachineDelete(d *schema.ResourceData, meta interface{
 
 	log.Printf("[INFO] Deleting virtual machine: %s", d.Id())
 
-	_, err = vm.PowerOff()
+	_, err = vm.PowerOff(context.TODO())
 	if err != nil {
 		return err
 	}
 
-	_, err = vm.Destroy()
+	_, err = vm.Destroy(context.TODO())
 	if err != nil {
 		return err
 	}

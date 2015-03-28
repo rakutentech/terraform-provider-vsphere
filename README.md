@@ -59,7 +59,6 @@ resource "vsphere_virtual_machine" "default" {
     memory = 4096
     gateway = "Gateway ip address"
     network_interface {
-        device_name = "NIC name"      # e.g. eth0
         label = "Network label name"
         ip_address = "IP address"
         subnet_mask = "Subnet mask"
@@ -87,7 +86,6 @@ The following arguments are supported.
 
 Each `network_interface` supports the following:
 
-* `device_name` - (Required) Network interface device name.
 * `label` - (Required) Network label name.
 * `ip_address` - (Optional) IP address. DHCP configuration in default. If you use the static IP address, it's required.
 * `subnet_mask` - (Optional) Subnet mask. If you use the static IP address, it's required.
@@ -102,7 +100,6 @@ resource "vsphere_virtual_machine" "default" {
     vcpu = 2
     memory = 4096
     network_interface {
-        device_name = "eth0"      # e.g. eth0
         label = "VM Network"
     }
 }

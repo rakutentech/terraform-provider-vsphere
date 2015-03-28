@@ -6,6 +6,7 @@ import (
 	"net/url"
 
 	"github.com/vmware/govmomi"
+	"golang.org/x/net/context"
 )
 
 const (
@@ -27,7 +28,7 @@ func (c *Config) Client() (*govmomi.Client, error) {
 
 	u.User = url.UserPassword(c.User, c.Password)
 
-	client, err := govmomi.NewClient(*u, defaultInsecureFlag)
+	client, err := govmomi.NewClient(context.TODO(), u, defaultInsecureFlag)
 	if err != nil {
 		return nil, fmt.Errorf("Error setting up client: %s", err)
 	}
