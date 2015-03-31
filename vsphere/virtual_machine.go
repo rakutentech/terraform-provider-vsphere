@@ -82,7 +82,7 @@ func (vm *VirtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 	}
 	log.Printf("[DEBUG] resource pool: %#v", resourcePool)
 
-	datastore, err := getDatastore(c, finder, dcFolders.DatastoreFolder, dcFolders.VmFolder, template, resourcePool, vm.Datastore)
+	datastore, err := getDatastore(c, finder, dcFolders, template, resourcePool, vm.Datastore)
 	if err != nil {
 		return err
 	}
@@ -242,7 +242,7 @@ func findDatastoreForClone(c *govmomi.Client, storagePod *object.Folder, templat
 }
 
 // getDatastore gets Datastore object.
-func getDatastore(c *govmomi.Client, finder *find.Finder, datastoreFolder, vmFolder *object.Folder, template *object.VirtualMachine, resourcePool *object.ResourcePool, name string) (*object.Datastore, error) {
+func getDatastore(c *govmomi.Client, finder *find.Finder, f *object.DatacenterFolders, template *object.VirtualMachine, resourcePool *object.ResourcePool, name string) (*object.Datastore, error) {
 	if name == "" {
 		datastore, err := finder.DefaultDatastore(context.TODO())
 		if err != nil {
@@ -253,7 +253,7 @@ func getDatastore(c *govmomi.Client, finder *find.Finder, datastoreFolder, vmFol
 	} else {
 		var datastore *object.Datastore
 		s := object.NewSearchIndex(c.Client)
-		ref, err := s.FindChild(context.TODO(), datastoreFolder, name)
+		ref, err := s.FindChild(context.TODO(), f.DatastoreFolder, name)
 		if err != nil {
 			return nil, err
 		}
@@ -262,7 +262,7 @@ func getDatastore(c *govmomi.Client, finder *find.Finder, datastoreFolder, vmFol
 		mor := ref.Reference()
 		if mor.Type == "StoragePod" {
 			s := object.NewFolder(c.Client, mor)
-			datastore, err = findDatastoreForClone(c, s, template, vmFolder, resourcePool)
+			datastore, err = findDatastoreForClone(c, s, template, f.VmFolder, resourcePool)
 			if err != nil {
 				return nil, err
 			}
