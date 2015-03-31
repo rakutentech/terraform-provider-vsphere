@@ -6,6 +6,7 @@ import (
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
+	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
 	"golang.org/x/net/context"
 )
@@ -38,7 +39,7 @@ type VirtualMachine struct {
 	DNSServers        []string
 }
 
-func (vm *VirtualMachine) RunVirtualMachine(c *govmomi.Client) error {
+func (vm *VirtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 	if len(vm.DNSServers) == 0 {
 		vm.DNSServers = []string{
 			"8.8.8.8",
@@ -61,6 +62,7 @@ func (vm *VirtualMachine) RunVirtualMachine(c *govmomi.Client) error {
 	if err != nil {
 		return err
 	}
+
 	finder = finder.SetDatacenter(dc)
 	dcFolders, err := dc.Folders(context.TODO())
 	if err != nil {
@@ -72,52 +74,19 @@ func (vm *VirtualMachine) RunVirtualMachine(c *govmomi.Client) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("[DEBUG] template: %v", template)
+	log.Printf("[DEBUG] template: %#v", template)
 
-	var datastore *object.Datastore
-	if vm.Datastore == "" {
-		datastore, err = finder.DefaultDatastore(context.TODO())
-		if err != nil {
-			return err
-		}
-		log.Printf("[DEBUG] datastore: %v", datastore)
-	} else {
-		storage, err := getStorage(c, dcFolders.DatastoreFolder, vm.Datastore)
-		if err != nil {
-			return err
-		}
-		log.Printf("[DEBUG] storage: %v", storage)
-
-		if storage.Type == "StoragePod" {
-			datastore, err = findDatastoreForClone(c, storage, template, vmFolder)
-			if err != nil {
-				return err
-			}
-		}
-		log.Printf("[DEBUG] datastore: %v", datastore)
+	resourcePool, err := getResourcePool(finder, vm.ResourcePool, vm.Cluster)
+	if err != nil {
+		return err
 	}
+	log.Printf("[DEBUG] resource pool: %#v", resourcePool)
 
-	// find ResourcePool object
-	var resourcePool *object.ResourcePool
-	if vm.ResourcePool == "" {
-		if vm.Cluster == "" {
-			resourcePool, err = finder.DefaultResourcePool(context.TODO())
-			if err != nil {
-				return err
-			}
-		} else {
-			resourcePool, err = finder.ResourcePool(context.TODO(), "*"+vm.Cluster+"/Resources")
-			if err != nil {
-				return err
-			}
-		}
-		log.Printf("[DEBUG] resource pool: %v", resourcePool)
-	} else {
-		resourcePool, err = finder.ResourcePool(context.TODO(), vm.ResourcePool)
-		if err != nil {
-			return err
-		}
+	datastore, err := getDatastore(c, finder, dcFolders.DatastoreFolder, dcFolders.VmFolder, template, resourcePool, vm.Datastore)
+	if err != nil {
+		return err
 	}
+	log.Printf("[DEBUG] datastore: %#v", datastore)
 
 	relocateSpec, err := getVMRelocateSpec(resourcePool, datastore, template)
 	if err != nil {
@@ -209,34 +178,100 @@ func (vm *VirtualMachine) RunVirtualMachine(c *govmomi.Client) error {
 	return nil
 }
 
-func findDatastoreForClone(c *govmomi.Client, d *types.ManagedObjectReference, t *object.VirtualMachine, f *object.Folder) (*object.Datastore, error) {
-	tr := t.Reference()
-	fr := f.Reference()
+func findDatastoreForClone(c *govmomi.Client, storagePod *object.Folder, template *object.VirtualMachine, vmFolder *object.Folder, resourcePool *object.ResourcePool) (*object.Datastore, error) {
+
+	templateRef := template.Reference()
+	vmFolderRef := vmFolder.Reference()
+	resourcePoolRef := resourcePool.Reference()
+	storagePodRef := storagePod.Reference()
+
+	var o mo.VirtualMachine
+	err := template.Properties(context.TODO(), templateRef, []string{"datastore"}, &o)
+	if err != nil {
+		return nil, err
+	}
+	templateDatastore := object.NewDatastore(c.Client, o.Datastore[0])
+	log.Printf("[DEBUG] %#v\n", templateDatastore)
+
+	devices, err := template.Device(context.TODO())
+	if err != nil {
+		return nil, err
+	}
+
+	var key int
+	for _, d := range devices.SelectByType((*types.VirtualDisk)(nil)) {
+		key = d.GetVirtualDevice().Key
+		log.Printf("[DEBUG] %#v\n", d.GetVirtualDevice())
+	}
 
 	sps := types.StoragePlacementSpec{
 		Type: "clone",
-		Vm:   &tr,
+		Vm:   &templateRef,
 		PodSelectionSpec: types.StorageDrsPodSelectionSpec{
-			StoragePod: d,
+			StoragePod: &storagePodRef,
 		},
 		CloneSpec: &types.VirtualMachineCloneSpec{
-			Location: types.VirtualMachineRelocateSpec{},
+			Location: types.VirtualMachineRelocateSpec{
+				Disk: []types.VirtualMachineRelocateSpecDiskLocator{
+					types.VirtualMachineRelocateSpecDiskLocator{
+						Datastore:       templateDatastore.Reference(),
+						DiskBackingInfo: &types.VirtualDiskFlatVer2BackingInfo{},
+						DiskId:          key,
+					},
+				},
+				Pool: &resourcePoolRef,
+			},
 			PowerOn:  false,
 			Template: false,
 		},
 		CloneName: "dummy",
-		Folder:    &fr,
+		Folder:    &vmFolderRef,
 	}
+	log.Printf("[DEBUG] findDatastoreForClone: StoragePlacementSpec: %v", sps)
 
 	srm := object.NewStorageResourceManager(c.Client)
 	result, err := srm.RecommendDatastores(context.TODO(), sps)
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("[DEBUG] findDatastoreForClone: result: %v", result)
 	spa := result.Recommendations[0].Action[0].(*types.StoragePlacementAction)
 	datastore := object.NewDatastore(c.Client, spa.Destination)
 
 	return datastore, nil
+}
+
+// getDatastore gets Datastore object.
+func getDatastore(c *govmomi.Client, finder *find.Finder, datastoreFolder, vmFolder *object.Folder, template *object.VirtualMachine, resourcePool *object.ResourcePool, name string) (*object.Datastore, error) {
+	if name == "" {
+		datastore, err := finder.DefaultDatastore(context.TODO())
+		if err != nil {
+			return nil, err
+		}
+		log.Printf("[DEBUG] getDatastore: datastore: %#v", datastore)
+		return datastore, nil
+	} else {
+		var datastore *object.Datastore
+		s := object.NewSearchIndex(c.Client)
+		ref, err := s.FindChild(context.TODO(), datastoreFolder, name)
+		if err != nil {
+			return nil, err
+		}
+		log.Printf("[DEBUG] getDatastore: reference: %#v", ref)
+
+		mor := ref.Reference()
+		if mor.Type == "StoragePod" {
+			s := object.NewFolder(c.Client, mor)
+			datastore, err = findDatastoreForClone(c, s, template, vmFolder, resourcePool)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			datastore = object.NewDatastore(c.Client, mor)
+		}
+		log.Printf("[DEBUG] getDatastore: datastore: %#v", datastore)
+		return datastore, nil
+	}
 }
 
 func networkDevice(f *find.Finder, label string) (*types.VirtualDeviceConfigSpec, error) {
@@ -283,16 +318,6 @@ func getDatacenter(f *find.Finder, name string) (*object.Datacenter, error) {
 	}
 }
 
-func getStorage(c *govmomi.Client, f *object.Folder, name string) (*types.ManagedObjectReference, error) {
-	s := object.NewSearchIndex(c.Client)
-	storageRef, err := s.FindChild(context.TODO(), f, name)
-	if err != nil {
-		return nil, err
-	}
-	storage := storageRef.Reference()
-	return &storage, nil
-}
-
 // getVirtualMachine finds VirtualMachine or Template object
 func getVirtualMachine(c *govmomi.Client, f *object.Folder, name string) (*object.VirtualMachine, error) {
 	s := object.NewSearchIndex(c.Client)
@@ -302,6 +327,31 @@ func getVirtualMachine(c *govmomi.Client, f *object.Folder, name string) (*objec
 	}
 	vm := object.NewVirtualMachine(c.Client, vmRef.Reference())
 	return vm, nil
+}
+
+// getResourcePool finds ResourcePool object
+func getResourcePool(f *find.Finder, name, cluster string) (*object.ResourcePool, error) {
+	if name == "" {
+		if cluster == "" {
+			resourcePool, err := f.DefaultResourcePool(context.TODO())
+			if err != nil {
+				return nil, err
+			}
+			return resourcePool, nil
+		} else {
+			resourcePool, err := f.ResourcePool(context.TODO(), "*"+cluster+"/Resources")
+			if err != nil {
+				return nil, err
+			}
+			return resourcePool, nil
+		}
+	} else {
+		resourcePool, err := f.ResourcePool(context.TODO(), name)
+		if err != nil {
+			return nil, err
+		}
+		return resourcePool, nil
+	}
 }
 
 func getVMRelocateSpec(rp *object.ResourcePool, ds *object.Datastore, vm *object.VirtualMachine) (types.VirtualMachineRelocateSpec, error) {
