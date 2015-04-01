@@ -173,7 +173,7 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 	vm.NetworkInterfaces = networks
 	log.Printf("[DEBUG] network_interface init: %v", networks)
 
-	err := vm.RunVirtualMachine(client)
+	err := vm.deployVirtualMachine(client)
 	if err != nil {
 		return fmt.Errorf("error: %s", err)
 	}
