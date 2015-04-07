@@ -1,12 +1,11 @@
 #!/bin/bash
 set -xe
 
-NAME="terraform-provider-vsphere"
-VERSION=$1
-if [ -z $VERSION ]; then
-    echo "Please specify a version."
-    exit 1
-fi
+VERSION=$(grep "const Version " version.go | sed -E 's/.*"(.+)"$/\1/')
+REPO="terraform-provider-vsphere"
+
+DIR=$(cd $(dirname ${0})/.. && pwd)
+cd ${DIR}
 
 # Get the parent directory of where this script is.
 SOURCE="${BASH_SOURCE[0]}"
@@ -20,29 +19,32 @@ go get -u github.com/hashicorp/terraform
 (cd $GOPATH/src/github.com/hashicorp/terraform/ && make updatedeps && make dev)
 go get -u github.com/vmware/govmomi
 
-gox -os="darwin linux windows" -arch="386 amd64" -output "pkg/{{.OS}}_{{.Arch}}"
+gox -os="darwin linux windows" -arch="386 amd64" -output "pkg/{{.OS}}_{{.Arch}}/{{.Dir}}"
 
-rm -rf ./pkg/dist
-mkdir -p ./pkg/dist
+if [ -d pkg ];then
+    rm -rf ./pkg/dist
+fi 
 
-for FILENAME in $(find ./pkg -mindepth 1 -maxdepth 1 -type f); do
-    FILENAME=$(basename $FILENAME)
-    mv ./pkg/${FILENAME} ./pkg/dist/${NAME}_${VERSION}_${FILENAME}
-done
+# Package all binary as .zip
+mkdir -p ./pkg/dist/${VERSION}
+for PLATFORM in $(find ./pkg -mindepth 1 -maxdepth 1 -type d); do
+    PLATFORM_NAME=$(basename ${PLATFORM})
+    ARCHIVE_NAME=${REPO}_${VERSION}_${PLATFORM_NAME}
 
-pushd ./pkg/dist
-shasum -a256 * > ./${NAME}_${VERSION}_SHA256SUMS
-popd
+    if [ $PLATFORM_NAME = "dist" ]; then
+        continue
+    fi
 
-for ARCHIVE in ./pkg/dist/*; do
-    ARCHIVE_NAME=$(basename ${ARCHIVE} .exe)
-    pushd ./pkg/dist
-    zip ${ARCHIVE_NAME}.zip ${ARCHIVE_NAME}*
+    pushd ${PLATFORM}
+    zip ${DIR}/pkg/dist/${VERSION}/${ARCHIVE_NAME}.zip ./*
     popd
 done
 
-mkdir -p ./pkg/dist/${VERSION}
-mv ./pkg/dist/*.zip ./pkg/dist/${VERSION}/
+# Generate shasum
+pushd ./pkg/dist/${VERSION}
+shasum -a256 * > ./${REPO}_${VERSION}_SHA256SUMS
+popd
+
 ghr --username rakutentech --token $GITHUB_TOKEN --replace ${VERSION} ./pkg/dist/${VERSION}
 
 exit 0
