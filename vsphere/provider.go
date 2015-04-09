@@ -1,8 +1,6 @@
 package vsphere
 
 import (
-	"os"
-
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/hashicorp/terraform/terraform"
 )
@@ -14,21 +12,21 @@ func Provider() terraform.ResourceProvider {
 			"user": &schema.Schema{
 				Type:        schema.TypeString,
 				Required:    true,
-				DefaultFunc: envDefaultFunc("VSPHERE_USER"),
+				DefaultFunc: schema.EnvDefaultFunc("VSPHERE_USER", nil),
 				Description: "The user name for vSphere API operations.",
 			},
 
 			"password": &schema.Schema{
 				Type:        schema.TypeString,
 				Required:    true,
-				DefaultFunc: envDefaultFunc("VSPHERE_PASSWORD"),
+				DefaultFunc: schema.EnvDefaultFunc("VSPHERE_PASSWORD", nil),
 				Description: "The user password for vSphere API operations.",
 			},
 
 			"vcenter_server": &schema.Schema{
 				Type:        schema.TypeString,
 				Required:    true,
-				DefaultFunc: envDefaultFunc("VSPHERE_VCENTER"),
+				DefaultFunc: schema.EnvDefaultFunc("VSPHERE_VCENTER", nil),
 				Description: "The vCenter Server name for vSphere API operations.",
 			},
 		},
@@ -38,16 +36,6 @@ func Provider() terraform.ResourceProvider {
 		},
 
 		ConfigureFunc: providerConfigure,
-	}
-}
-
-func envDefaultFunc(k string) schema.SchemaDefaultFunc {
-	return func() (interface{}, error) {
-		if v := os.Getenv(k); v != "" {
-			return v, nil
-		}
-
-		return nil, nil
 	}
 }
 
