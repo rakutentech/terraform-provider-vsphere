@@ -17,69 +17,82 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 	return &schema.Resource{
 		Create: resourceVSphereVirtualMachineCreate,
 		Read:   resourceVSphereVirtualMachineRead,
+		Update: resourceVSphereVirtualMachineUpdate,
 		Delete: resourceVSphereVirtualMachineDelete,
 
 		Schema: map[string]*schema.Schema{
 			"name": &schema.Schema{
 				Type:     schema.TypeString,
 				Required: true,
+				ForceNew: true,
 			},
 
 			"template": &schema.Schema{
 				Type:     schema.TypeString,
 				Required: true,
+				ForceNew: false,
 			},
 
 			"vcpu": &schema.Schema{
 				Type:     schema.TypeInt,
 				Required: true,
+				ForceNew: false,
 			},
 
 			"memory": &schema.Schema{
 				Type:     schema.TypeInt,
 				Required: true,
+				ForceNew: false,
 			},
 
 			"datacenter": &schema.Schema{
 				Type:     schema.TypeString,
 				Optional: true,
+				ForceNew: false,
 			},
 
 			"cluster": &schema.Schema{
 				Type:     schema.TypeString,
 				Optional: true,
+				ForceNew: false,
 			},
 
 			"resource_pool": &schema.Schema{
 				Type:     schema.TypeString,
 				Optional: true,
+				ForceNew: false,
 			},
 
 			"datastore": &schema.Schema{
 				Type:     schema.TypeString,
 				Optional: true,
+				ForceNew: false,
 			},
 
 			"gateway": &schema.Schema{
 				Type:     schema.TypeString,
 				Optional: true,
+				ForceNew: false,
 			},
 
 			"domain": &schema.Schema{
 				Type:     schema.TypeString,
 				Optional: true,
+				ForceNew: false,
 			},
 
 			"dns_suffix": &schema.Schema{
 				Type:     schema.TypeList,
 				Optional: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
+				ForceNew: false,
 			},
 
 			"dns_server": &schema.Schema{
 				Type:     schema.TypeList,
 				Optional: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
+				ForceNew: false,
 			},
 
 			"network_interface": &schema.Schema{
@@ -90,16 +103,19 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 						"label": &schema.Schema{
 							Type:     schema.TypeString,
 							Required: true,
+							ForceNew: false,
 						},
 
 						"ip_address": &schema.Schema{
 							Type:     schema.TypeString,
 							Optional: true,
+							ForceNew: false,
 						},
 
 						"subnet_mask": &schema.Schema{
 							Type:     schema.TypeString,
 							Optional: true,
+							ForceNew: false,
 						},
 					},
 				},
@@ -215,6 +231,10 @@ func resourceVSphereVirtualMachineRead(d *schema.ResourceData, meta interface{})
 	d.Set("memory", mvm.Summary.Config.MemorySizeMB)
 	d.Set("cpu", mvm.Summary.Config.NumCpu)
 
+	return nil
+}
+
+func resourceVSphereVirtualMachineUpdate(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
