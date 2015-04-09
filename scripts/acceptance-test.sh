@@ -17,8 +17,8 @@ RUN cd $GOPATH/src/github.com/hashicorp/terraform/ && make updatedeps && make de
 RUN go get -u github.com/vmware/govmomi
 EOT
 
-#sudo docker build --no-cache -t ${NAME} .
-sudo docker build -t ${NAME} .
+sudo docker build --no-cache -t ${NAME} .
+#sudo docker build -t ${NAME} .
 sudo docker run --rm -v "$(pwd)":${SRC_PATH}/${NAME} \
     -w ${SRC_PATH}/${NAME}/vsphere \
     -e "VSPHERE_VM_NAME=${VSPHERE_VM_NAME}" \
