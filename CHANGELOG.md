@@ -7,6 +7,7 @@ Improvements:
 
   - Update govmomi package ([**@tkak**](https://github.com/tkak))
   - Remove network device name from `vsphere_virtual_machine` resource ([**@tkak**](https://github.com/tkak))
+  - Support `time_zone` parameter ([**@tkak**](https://github.com/tkak))
 
 Bugfixes:
 
