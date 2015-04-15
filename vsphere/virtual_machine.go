@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	DefaultTimeZone = "Etc/UTC"
-	DefaultDomain   = "vsphere.local"
+	defaultTimeZone = "Etc/UTC"
+	defaultDomain   = "vsphere.local"
 )
 
 type NetworkInterface struct {
@@ -35,6 +35,7 @@ type VirtualMachine struct {
 	NetworkInterfaces []NetworkInterface
 	Gateway           string
 	Domain            string
+	TimeZone          string
 	DNSSuffixes       []string
 	DNSServers        []string
 }
@@ -49,12 +50,16 @@ func (vm *VirtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 
 	if len(vm.DNSSuffixes) == 0 {
 		vm.DNSSuffixes = []string{
-			DefaultDomain,
+			defaultDomain,
 		}
 	}
 
 	if vm.Domain == "" {
-		vm.Domain = DefaultDomain
+		vm.Domain = defaultDomain
+	}
+
+	if vm.TimeZone == "" {
+		vm.TimeZone = defaultTimeZone
 	}
 
 	finder := find.NewFinder(c.Client, true)
@@ -140,7 +145,7 @@ func (vm *VirtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 	log.Printf("[DEBUG] virtual machine config spec: %v", configSpec)
 
 	// make custom spec
-	customSpec := createCustomizationSpec(vm.Name, vm.Domain, vm.DNSSuffixes, vm.DNSServers, networkConfigs)
+	customSpec := createCustomizationSpec(vm.Name, vm.Domain, vm.TimeZone, vm.DNSSuffixes, vm.DNSServers, networkConfigs)
 	log.Printf("[DEBUG] custom spec: %v", customSpec)
 
 	// make vm clone spec
@@ -377,8 +382,8 @@ func getVMRelocateSpec(rp *object.ResourcePool, ds *object.Datastore, vm *object
 				Datastore: dsr,
 				DiskBackingInfo: &types.VirtualDiskFlatVer2BackingInfo{
 					DiskMode:        "persistent",
-					ThinProvisioned: false,
-					EagerlyScrub:    true,
+					ThinProvisioned: types.NewBool(false),
+					EagerlyScrub:    types.NewBool(true),
 				},
 				DiskId: key,
 			},
@@ -387,15 +392,15 @@ func getVMRelocateSpec(rp *object.ResourcePool, ds *object.Datastore, vm *object
 }
 
 // createCustomizationSpec creates the CustomizationSpec object.
-func createCustomizationSpec(name, domain string, suffixes, servers []string, nics []types.CustomizationAdapterMapping) types.CustomizationSpec {
+func createCustomizationSpec(name, domain, tz string, suffixes, servers []string, nics []types.CustomizationAdapterMapping) types.CustomizationSpec {
 	return types.CustomizationSpec{
 		Identity: &types.CustomizationLinuxPrep{
 			HostName: &types.CustomizationFixedName{
 				Name: name,
 			},
 			Domain:     domain,
-			TimeZone:   DefaultTimeZone,
-			HwClockUTC: true,
+			TimeZone:   tz,
+			HwClockUTC: types.NewBool(true),
 		},
 		GlobalIPSettings: types.CustomizationGlobalIPSettings{
 			DnsSuffixList: suffixes,

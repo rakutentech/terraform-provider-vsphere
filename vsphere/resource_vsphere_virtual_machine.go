@@ -81,6 +81,12 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 				ForceNew: false,
 			},
 
+			"time_zone": &schema.Schema{
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: false,
+			},
+
 			"dns_suffix": &schema.Schema{
 				Type:     schema.TypeList,
 				Optional: true,
@@ -156,6 +162,10 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 
 	if v := d.Get("domain"); v != nil {
 		vm.Domain = d.Get("domain").(string)
+	}
+
+	if v := d.Get("time_zone"); v != nil {
+		vm.TimeZone = d.Get("time_zone").(string)
 	}
 
 	dns_suffix := d.Get("dns_suffix.#").(int)
