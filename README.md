@@ -88,6 +88,7 @@ The following arguments are supported.
 * `resource_pool` - (Optional) Resource pool name.
 * `datastore` - (Optional) Datastore name
 * `gateway` - (Optional) Gateway IP address. If you use the static IP address, it's required.
+* `time_zone` - (Optional) Time zone configuration. By default, it's "Etc/UTC".
 * `domain` - (Optional) Domain configuration. By default, it's "vsphere.local".
 * `dns_suffix` - (Optional) List of DNS suffix. By default, it's `["vsphere.local"]`.
 * `dns_server` - (Optional) List of DNS server. By default, it's `["8.8.8.8", "8.8.4.4"]`.
