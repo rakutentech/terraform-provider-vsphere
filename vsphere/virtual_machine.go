@@ -16,54 +16,61 @@ const (
 	defaultDomain   = "vsphere.local"
 )
 
-type NetworkInterface struct {
-	DeviceName string
-	Label      string
-	IPAddress  string
-	SubnetMask string
+type networkInterface struct {
+	deviceName string
+	label      string
+	ipAddress  string
+	subnetMask string
 }
 
-type VirtualMachine struct {
-	Name              string
-	Datacenter        string
-	Cluster           string
-	ResourcePool      string
-	Datastore         string
-	VCPU              int
-	MemoryMB          int64
-	Template          string
-	NetworkInterfaces []NetworkInterface
-	Gateway           string
-	Domain            string
-	TimeZone          string
-	DNSSuffixes       []string
-	DNSServers        []string
+type additionalHardDisk struct {
+	size      int
+	datastore string
+	iops      int
 }
 
-func (vm *VirtualMachine) deployVirtualMachine(c *govmomi.Client) error {
-	if len(vm.DNSServers) == 0 {
-		vm.DNSServers = []string{
+type virtualMachine struct {
+	name               string
+	datacenter         string
+	cluster            string
+	resourcePool       string
+	datastore          string
+	vcpu               int
+	memoryMb           int64
+	template           string
+	networkInterfaces  []networkInterface
+	addtionalHardDisks []additionalHardDisk
+	gateway            string
+	domain             string
+	timeZone           string
+	dnsSuffixes        []string
+	dnsServers         []string
+}
+
+func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
+	if len(vm.dnsServers) == 0 {
+		vm.dnsServers = []string{
 			"8.8.8.8",
 			"8.8.4.4",
 		}
 	}
 
-	if len(vm.DNSSuffixes) == 0 {
-		vm.DNSSuffixes = []string{
+	if len(vm.dnsSuffixes) == 0 {
+		vm.dnsSuffixes = []string{
 			defaultDomain,
 		}
 	}
 
-	if vm.Domain == "" {
-		vm.Domain = defaultDomain
+	if vm.domain == "" {
+		vm.domain = defaultDomain
 	}
 
-	if vm.TimeZone == "" {
-		vm.TimeZone = defaultTimeZone
+	if vm.timeZone == "" {
+		vm.timeZone = defaultTimeZone
 	}
 
 	finder := find.NewFinder(c.Client, true)
-	dc, err := getDatacenter(finder, vm.Datacenter)
+	dc, err := getDatacenter(finder, vm.datacenter)
 	if err != nil {
 		return err
 	}
@@ -75,19 +82,19 @@ func (vm *VirtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 	}
 
 	vmFolder := dcFolders.VmFolder
-	template, err := getVirtualMachine(c, vmFolder, vm.Template)
+	template, err := getVirtualMachine(c, vmFolder, vm.template)
 	if err != nil {
 		return err
 	}
 	log.Printf("[DEBUG] template: %#v", template)
 
-	resourcePool, err := getResourcePool(finder, vm.ResourcePool, vm.Cluster)
+	resourcePool, err := getResourcePool(finder, vm.resourcePool, vm.cluster)
 	if err != nil {
 		return err
 	}
 	log.Printf("[DEBUG] resource pool: %#v", resourcePool)
 
-	datastore, err := getDatastore(c, finder, dcFolders, template, resourcePool, vm.Datastore)
+	datastore, err := getDatastore(c, finder, dcFolders, template, resourcePool, vm.datastore)
 	if err != nil {
 		return err
 	}
@@ -102,28 +109,28 @@ func (vm *VirtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 	// network
 	networkDevices := []types.BaseVirtualDeviceConfigSpec{}
 	networkConfigs := []types.CustomizationAdapterMapping{}
-	for _, network := range vm.NetworkInterfaces {
+	for _, network := range vm.networkInterfaces {
 		// network device
-		device, err := networkDevice(finder, network.Label)
+		device, err := networkDevice(finder, network.label)
 		if err != nil {
 			return err
 		}
 		networkDevices = append(networkDevices, device)
 
 		var ipSetting types.CustomizationIPSettings
-		if network.IPAddress == "" {
+		if network.ipAddress == "" {
 			ipSetting = types.CustomizationIPSettings{
 				Ip: &types.CustomizationDhcpIpGenerator{},
 			}
 		} else {
 			ipSetting = types.CustomizationIPSettings{
 				Gateway: []string{
-					vm.Gateway,
+					vm.gateway,
 				},
 				Ip: &types.CustomizationFixedIp{
-					IpAddress: network.IPAddress,
+					IpAddress: network.ipAddress,
 				},
-				SubnetMask: network.SubnetMask,
+				SubnetMask: network.subnetMask,
 			}
 		}
 
@@ -137,15 +144,15 @@ func (vm *VirtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 
 	// make config spec
 	configSpec := types.VirtualMachineConfigSpec{
-		NumCPUs:           vm.VCPU,
+		NumCPUs:           vm.vcpu,
 		NumCoresPerSocket: 1,
-		MemoryMB:          vm.MemoryMB,
+		MemoryMB:          vm.memoryMb,
 		DeviceChange:      networkDevices,
 	}
 	log.Printf("[DEBUG] virtual machine config spec: %v", configSpec)
 
 	// make custom spec
-	customSpec := createCustomizationSpec(vm.Name, vm.Domain, vm.TimeZone, vm.DNSSuffixes, vm.DNSServers, networkConfigs)
+	customSpec := createCustomizationSpec(vm.name, vm.domain, vm.timeZone, vm.dnsSuffixes, vm.dnsServers, networkConfigs)
 	log.Printf("[DEBUG] custom spec: %v", customSpec)
 
 	// make vm clone spec
@@ -158,7 +165,7 @@ func (vm *VirtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 	}
 	log.Printf("[DEBUG] clone spec: %v", cloneSpec)
 
-	task, err := template.Clone(context.TODO(), vmFolder, vm.Name, cloneSpec)
+	task, err := template.Clone(context.TODO(), vmFolder, vm.name, cloneSpec)
 	if err != nil {
 		return err
 	}
@@ -168,7 +175,7 @@ func (vm *VirtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 		return err
 	}
 
-	newVM, err := getVirtualMachine(c, vmFolder, vm.Name)
+	newVM, err := getVirtualMachine(c, vmFolder, vm.name)
 	if err != nil {
 		return err
 	}
