@@ -87,6 +87,7 @@ The following arguments are supported.
 * `cluster` - (Optional) Cluster name, a cluster is a group of hosts.
 * `resource_pool` - (Optional) Resource pool name.
 * `datastore` - (Optional) Datastore name
+* `additional_disk` - (Required) Additional hard disk configuration.
 * `gateway` - (Optional) Gateway IP address. If you use the static IP address, it's required.
 * `time_zone` - (Optional) Time zone configuration. By default, it's "Etc/UTC".
 * `domain` - (Optional) Domain configuration. By default, it's "vsphere.local".
@@ -98,6 +99,12 @@ Each `network_interface` supports the following:
 * `label` - (Required) Network label name.
 * `ip_address` - (Optional) IP address. DHCP configuration in default. If you use the static IP address, it's required.
 * `subnet_mask` - (Optional) Subnet mask. If you use the static IP address, it's required.
+
+Each `additional_disk` supports the following:
+
+* `size` - (Required) Size of additional hard disk in gigabytes. 
+* `datastore` - (Optional) Datastore name. By default, it's same as `Hard disk 1`.
+* `iops` - (Optional) IOPS number. By default, it's unlimited.
 
 
 For example

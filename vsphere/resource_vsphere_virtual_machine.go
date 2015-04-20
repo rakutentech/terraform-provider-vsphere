@@ -126,6 +126,32 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 					},
 				},
 			},
+
+			"additional_disk": &schema.Schema{
+				Type:     schema.TypeList,
+				Optional: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"size": &schema.Schema{
+							Type:     schema.TypeInt,
+							Required: true,
+							ForceNew: false,
+						},
+
+						"datastore": &schema.Schema{
+							Type:     schema.TypeString,
+							Optional: true,
+							ForceNew: false,
+						},
+
+						"iops": &schema.Schema{
+							Type:     schema.TypeInt,
+							Optional: true,
+							ForceNew: false,
+						},
+					},
+				},
+			},
 		},
 	}
 }
