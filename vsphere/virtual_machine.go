@@ -75,7 +75,7 @@ func (vm *VirtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 	}
 
 	vmFolder := dcFolders.VmFolder
-	template, err := getVirtualMachine(c, vmFolder, vm.Template)
+	template, err := finder.VirtualMachine(context.TODO(), vm.Template)
 	if err != nil {
 		return err
 	}
@@ -168,7 +168,7 @@ func (vm *VirtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 		return err
 	}
 
-	newVM, err := getVirtualMachine(c, vmFolder, vm.Name)
+	newVM, err := finder.VirtualMachine(context.TODO(), vm.Name)
 	if err != nil {
 		return err
 	}
@@ -321,17 +321,6 @@ func getDatacenter(f *find.Finder, name string) (*object.Datacenter, error) {
 		}
 		return dc, nil
 	}
-}
-
-// getVirtualMachine finds VirtualMachine or Template object
-func getVirtualMachine(c *govmomi.Client, f *object.Folder, name string) (*object.VirtualMachine, error) {
-	s := object.NewSearchIndex(c.Client)
-	vmRef, err := s.FindChild(context.TODO(), f, name)
-	if err != nil {
-		return nil, err
-	}
-	vm := object.NewVirtualMachine(c.Client, vmRef.Reference())
-	return vm, nil
 }
 
 // getResourcePool finds ResourcePool object
