@@ -62,7 +62,7 @@ resource "vsphere_virtual_machine" "default" {
     datacenter = "Datacenter name"
     cluster = "Cluster name"
     datastore = "Datastore name"
-    template = "centos-6.6-x86_64"    # Template name
+    template = "templates/centos-6.6-x86_64"
     vcpu = 2
     memory = 4096
     gateway = "Gateway ip address"

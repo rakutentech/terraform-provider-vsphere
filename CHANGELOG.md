@@ -1,7 +1,7 @@
 CHANGELOG
 =========
 
-## 0.2.0 (Unreleased)
+## 0.2.0 (April 28, 2015)
 
 Improvements:
 
@@ -13,6 +13,7 @@ Bugfixes:
 
   - Add ForceNew option and modify for passing InternalValidate ([**@tkak**](https://github.com/tkak))
   - Fix wrong binary name of this terraform plugin ([**@tkak**](https://github.com/tkak))
+  - VM Template in child folders can be specified. #4 ([**@tkak**](https://github.com/tkak))
 
 
 ## 0.1.0 (February 24, 2015)
