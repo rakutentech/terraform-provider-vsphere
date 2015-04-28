@@ -220,13 +220,8 @@ func resourceVSphereVirtualMachineRead(d *schema.ResourceData, meta interface{})
 		return err
 	}
 
-	d.Set("datacenter", dc)
-	dcFolders, err := dc.Folders(context.TODO())
-	if err != nil {
-		return err
-	}
-
-	vm, err := getVirtualMachine(client, dcFolders.VmFolder, d.Get("name").(string))
+	finder = finder.SetDatacenter(dc)
+	vm, err := finder.VirtualMachine(context.TODO(), d.Get("name").(string))
 	if err != nil {
 		log.Printf("[ERROR] Virtual machine not found: %s", d.Get("name").(string))
 		d.SetId("")
@@ -238,6 +233,7 @@ func resourceVSphereVirtualMachineRead(d *schema.ResourceData, meta interface{})
 	collector := property.DefaultCollector(client.Client)
 	err = collector.RetrieveOne(context.TODO(), vm.Reference(), []string{"summary"}, &mvm)
 
+	d.Set("datacenter", dc)
 	d.Set("memory", mvm.Summary.Config.MemorySizeMB)
 	d.Set("cpu", mvm.Summary.Config.NumCpu)
 
@@ -259,13 +255,8 @@ func resourceVSphereVirtualMachineDelete(d *schema.ResourceData, meta interface{
 		return err
 	}
 
-	d.Set("datacenter", dc)
-	dcFolders, err := dc.Folders(context.TODO())
-	if err != nil {
-		return err
-	}
-
-	vm, err := getVirtualMachine(client, dcFolders.VmFolder, d.Get("name").(string))
+	finder = finder.SetDatacenter(dc)
+	vm, err := finder.VirtualMachine(context.TODO(), d.Get("name").(string))
 	if err != nil {
 		return err
 	}
