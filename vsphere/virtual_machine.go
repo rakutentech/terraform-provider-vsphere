@@ -26,7 +26,7 @@ type networkInterface struct {
 type additionalHardDisk struct {
 	size      int
 	datastore string
-	iops      int
+	iopsLimit int
 }
 
 type virtualMachine struct {
@@ -82,7 +82,7 @@ func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 	}
 
 	vmFolder := dcFolders.VmFolder
-	template, err := getVirtualMachine(c, vmFolder, vm.template)
+	template, err := finder.VirtualMachine(context.TODO(), vm.template)
 	if err != nil {
 		return err
 	}
@@ -175,7 +175,7 @@ func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 		return err
 	}
 
-	newVM, err := getVirtualMachine(c, vmFolder, vm.name)
+	newVM, err := finder.VirtualMachine(context.TODO(), vm.name)
 	if err != nil {
 		return err
 	}
@@ -328,17 +328,6 @@ func getDatacenter(f *find.Finder, name string) (*object.Datacenter, error) {
 		}
 		return dc, nil
 	}
-}
-
-// getVirtualMachine finds VirtualMachine or Template object
-func getVirtualMachine(c *govmomi.Client, f *object.Folder, name string) (*object.VirtualMachine, error) {
-	s := object.NewSearchIndex(c.Client)
-	vmRef, err := s.FindChild(context.TODO(), f, name)
-	if err != nil {
-		return nil, err
-	}
-	vm := object.NewVirtualMachine(c.Client, vmRef.Reference())
-	return vm, nil
 }
 
 // getResourcePool finds ResourcePool object
