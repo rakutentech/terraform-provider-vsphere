@@ -14,7 +14,7 @@ import (
 )
 
 func TestAccVSphereVirtualMachine_Basic(t *testing.T) {
-	var vm VirtualMachine
+	var vm virtualMachine
 	name := os.Getenv("VSPHERE_VM_NAME")
 	datacenter := os.Getenv("VSPHERE_DATACENTER")
 	cluster := os.Getenv("VSPHERE_CLUSTER")
@@ -76,7 +76,7 @@ func testAccCheckVSphereVirtualMachineDestroy(s *terraform.State) error {
 	return nil
 }
 
-func testAccCheckVSphereVirtualMachineExists(n string, vm *VirtualMachine) resource.TestCheckFunc {
+func testAccCheckVSphereVirtualMachineExists(n string, vm *virtualMachine) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -116,8 +116,8 @@ func testAccCheckVSphereVirtualMachineExists(n string, vm *VirtualMachine) resou
 			*instance = *found
 		*/
 
-		*vm = VirtualMachine{
-			Name: rs.Primary.ID,
+		*vm = virtualMachine{
+			name: rs.Primary.ID,
 		}
 
 		return nil
@@ -139,5 +139,9 @@ resource "vsphere_virtual_machine" "foobar" {
         ip_address = "192.168.0.10"
         subnet_mask = "255.255.255.0"
     }
+    additional_disk {
+		size = 1
+		iops = 500
+	}
 }
 `

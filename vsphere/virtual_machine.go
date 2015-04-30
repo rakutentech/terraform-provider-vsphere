@@ -16,78 +16,82 @@ const (
 	defaultDomain   = "vsphere.local"
 )
 
-type NetworkInterface struct {
-	DeviceName string
-	Label      string
-	IPAddress  string
-	SubnetMask string
+type networkInterface struct {
+	deviceName string
+	label      string
+	ipAddress  string
+	subnetMask string
 }
 
-type VirtualMachine struct {
-	Name              string
-	Datacenter        string
-	Cluster           string
-	ResourcePool      string
-	Datastore         string
-	VCPU              int
-	MemoryMB          int64
-	Template          string
-	NetworkInterfaces []NetworkInterface
-	Gateway           string
-	Domain            string
-	TimeZone          string
-	DNSSuffixes       []string
-	DNSServers        []string
+type additionalHardDisk struct {
+	size int64
+	iops int64
 }
 
-func (vm *VirtualMachine) deployVirtualMachine(c *govmomi.Client) error {
-	if len(vm.DNSServers) == 0 {
-		vm.DNSServers = []string{
+type virtualMachine struct {
+	name                string
+	datacenter          string
+	cluster             string
+	resourcePool        string
+	datastore           string
+	vcpu                int
+	memoryMb            int64
+	template            string
+	networkInterfaces   []networkInterface
+	additionalHardDisks []additionalHardDisk
+	gateway             string
+	domain              string
+	timeZone            string
+	dnsSuffixes         []string
+	dnsServers          []string
+}
+
+func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
+	if len(vm.dnsServers) == 0 {
+		vm.dnsServers = []string{
 			"8.8.8.8",
 			"8.8.4.4",
 		}
 	}
 
-	if len(vm.DNSSuffixes) == 0 {
-		vm.DNSSuffixes = []string{
+	if len(vm.dnsSuffixes) == 0 {
+		vm.dnsSuffixes = []string{
 			defaultDomain,
 		}
 	}
 
-	if vm.Domain == "" {
-		vm.Domain = defaultDomain
+	if vm.domain == "" {
+		vm.domain = defaultDomain
 	}
 
-	if vm.TimeZone == "" {
-		vm.TimeZone = defaultTimeZone
+	if vm.timeZone == "" {
+		vm.timeZone = defaultTimeZone
 	}
 
 	finder := find.NewFinder(c.Client, true)
-	dc, err := getDatacenter(finder, vm.Datacenter)
+	dc, err := findDatacenter(finder, vm.datacenter)
 	if err != nil {
 		return err
 	}
-
 	finder = finder.SetDatacenter(dc)
-	dcFolders, err := dc.Folders(context.TODO())
-	if err != nil {
-		return err
-	}
 
-	vmFolder := dcFolders.VmFolder
-	template, err := finder.VirtualMachine(context.TODO(), vm.Template)
+	template, err := finder.VirtualMachine(context.TODO(), vm.template)
 	if err != nil {
 		return err
 	}
 	log.Printf("[DEBUG] template: %#v", template)
 
-	resourcePool, err := getResourcePool(finder, vm.ResourcePool, vm.Cluster)
+	resourcePool, err := findResourcePool(finder, vm.resourcePool, vm.cluster)
 	if err != nil {
 		return err
 	}
 	log.Printf("[DEBUG] resource pool: %#v", resourcePool)
 
-	datastore, err := getDatastore(c, finder, dcFolders, template, resourcePool, vm.Datastore)
+	dcFolders, err := dc.Folders(context.TODO())
+	if err != nil {
+		return err
+	}
+	datastore, err := findDatastore(c, finder, dcFolders, template, resourcePool, vm.datastore)
 	if err != nil {
 		return err
 	}
@@ -102,28 +106,28 @@ func (vm *VirtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 	// network
 	networkDevices := []types.BaseVirtualDeviceConfigSpec{}
 	networkConfigs := []types.CustomizationAdapterMapping{}
-	for _, network := range vm.NetworkInterfaces {
+	for _, network := range vm.networkInterfaces {
 		// network device
-		device, err := networkDevice(finder, network.Label)
+		device, err := networkDevice(finder, network.label)
 		if err != nil {
 			return err
 		}
 		networkDevices = append(networkDevices, device)
 
 		var ipSetting types.CustomizationIPSettings
-		if network.IPAddress == "" {
+		if network.ipAddress == "" {
 			ipSetting = types.CustomizationIPSettings{
 				Ip: &types.CustomizationDhcpIpGenerator{},
 			}
 		} else {
 			ipSetting = types.CustomizationIPSettings{
 				Gateway: []string{
-					vm.Gateway,
+					vm.gateway,
 				},
 				Ip: &types.CustomizationFixedIp{
-					IpAddress: network.IPAddress,
+					IpAddress: network.ipAddress,
 				},
-				SubnetMask: network.SubnetMask,
+				SubnetMask: network.subnetMask,
 			}
 		}
 
@@ -137,15 +141,15 @@ func (vm *VirtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 
 	// make config spec
 	configSpec := types.VirtualMachineConfigSpec{
-		NumCPUs:           vm.VCPU,
+		NumCPUs:           vm.vcpu,
 		NumCoresPerSocket: 1,
-		MemoryMB:          vm.MemoryMB,
+		MemoryMB:          vm.memoryMb,
 		DeviceChange:      networkDevices,
 	}
 	log.Printf("[DEBUG] virtual machine config spec: %v", configSpec)
 
 	// make custom spec
-	customSpec := createCustomizationSpec(vm.Name, vm.Domain, vm.TimeZone, vm.DNSSuffixes, vm.DNSServers, networkConfigs)
+	customSpec := createCustomizationSpec(vm.name, vm.domain, vm.timeZone, vm.dnsSuffixes, vm.dnsServers, networkConfigs)
 	log.Printf("[DEBUG] custom spec: %v", customSpec)
 
 	// make vm clone spec
@@ -158,7 +162,7 @@ func (vm *VirtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 	}
 	log.Printf("[DEBUG] clone spec: %v", cloneSpec)
 
-	task, err := template.Clone(context.TODO(), vmFolder, vm.Name, cloneSpec)
+	task, err := template.Clone(context.TODO(), dcFolders.VmFolder, vm.name, cloneSpec)
 	if err != nil {
 		return err
 	}
@@ -168,7 +172,7 @@ func (vm *VirtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 		return err
 	}
 
-	newVM, err := finder.VirtualMachine(context.TODO(), vm.Name)
+	newVM, err := finder.VirtualMachine(context.TODO(), vm.name)
 	if err != nil {
 		return err
 	}
@@ -179,6 +183,13 @@ func (vm *VirtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 		return err
 	}
 	log.Printf("[DEBUG] ip address: %v", ip)
+
+	for _, hd := range vm.additionalHardDisks {
+		err = addHardDisk(newVM, hd.size, hd.iops)
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -246,14 +257,14 @@ func findDatastoreForClone(c *govmomi.Client, storagePod *object.Folder, templat
 	return datastore, nil
 }
 
-// getDatastore gets Datastore object.
-func getDatastore(c *govmomi.Client, finder *find.Finder, f *object.DatacenterFolders, template *object.VirtualMachine, resourcePool *object.ResourcePool, name string) (*object.Datastore, error) {
+// findDatastore finds Datastore object.
+func findDatastore(c *govmomi.Client, finder *find.Finder, f *object.DatacenterFolders, template *object.VirtualMachine, resourcePool *object.ResourcePool, name string) (*object.Datastore, error) {
 	if name == "" {
 		datastore, err := finder.DefaultDatastore(context.TODO())
 		if err != nil {
 			return nil, err
 		}
-		log.Printf("[DEBUG] getDatastore: datastore: %#v", datastore)
+		log.Printf("[DEBUG] findDatastore: datastore: %#v", datastore)
 		return datastore, nil
 	} else {
 		var datastore *object.Datastore
@@ -262,7 +273,7 @@ func getDatastore(c *govmomi.Client, finder *find.Finder, f *object.DatacenterFo
 		if err != nil {
 			return nil, err
 		}
-		log.Printf("[DEBUG] getDatastore: reference: %#v", ref)
+		log.Printf("[DEBUG] findDatastore: reference: %#v", ref)
 
 		mor := ref.Reference()
 		if mor.Type == "StoragePod" {
@@ -274,17 +285,17 @@ func getDatastore(c *govmomi.Client, finder *find.Finder, f *object.DatacenterFo
 		} else {
 			datastore = object.NewDatastore(c.Client, mor)
 		}
-		log.Printf("[DEBUG] getDatastore: datastore: %#v", datastore)
+		log.Printf("[DEBUG] findDatastore: datastore: %#v", datastore)
 		return datastore, nil
 	}
 }
 
 func networkDevice(f *find.Finder, label string) (*types.VirtualDeviceConfigSpec, error) {
-	network, err := f.NetworkList(context.TODO(), "*"+label)
+	network, err := f.Network(context.TODO(), "*"+label)
 	if err != nil {
 		return nil, err
 	}
-	backing, err := network[0].EthernetCardBackingInfo(context.TODO())
+	backing, err := network.EthernetCardBackingInfo(context.TODO())
 	if err != nil {
 		return nil, err
 	}
@@ -306,8 +317,8 @@ func networkDevice(f *find.Finder, label string) (*types.VirtualDeviceConfigSpec
 	return &d, nil
 }
 
-// getDatacenter gets Datacenter object.
-func getDatacenter(f *find.Finder, name string) (*object.Datacenter, error) {
+// findDatacenter finds Datacenter object.
+func findDatacenter(f *find.Finder, name string) (*object.Datacenter, error) {
 	if name != "" {
 		dc, err := f.Datacenter(context.TODO(), name)
 		if err != nil {
@@ -323,8 +334,8 @@ func getDatacenter(f *find.Finder, name string) (*object.Datacenter, error) {
 	}
 }
 
-// getResourcePool finds ResourcePool object
-func getResourcePool(f *find.Finder, name, cluster string) (*object.ResourcePool, error) {
+// findResourcePool finds ResourcePool object
+func findResourcePool(f *find.Finder, name, cluster string) (*object.ResourcePool, error) {
 	if name == "" {
 		if cluster == "" {
 			resourcePool, err := f.DefaultResourcePool(context.TODO())
@@ -396,5 +407,42 @@ func createCustomizationSpec(name, domain, tz string, suffixes, servers []string
 			DnsServerList: servers,
 		},
 		NicSettingMap: nics,
+	}
+}
+
+func addHardDisk(vm *object.VirtualMachine, size, iops int64) error {
+	devices, err := vm.Device(context.TODO())
+	if err != nil {
+		return err
+	}
+
+	controller, err := devices.FindDiskController("scsi")
+	if err != nil {
+		return err
+	}
+
+	disk := devices.CreateDisk(controller, "")
+	existing := devices.SelectByBackingInfo(disk.Backing)
+
+	if len(existing) == 0 {
+		disk.CapacityInKB = int64(size * 1024 * 1024)
+		if iops != 0 {
+			disk.StorageIOAllocation = &types.StorageIOAllocationInfo{
+				Limit: iops,
+			}
+		}
+		backing := disk.Backing.(*types.VirtualDiskFlatVer2BackingInfo)
+
+		// eager zeroed thick virtual disk
+		backing.ThinProvisioned = types.NewBool(false)
+		backing.EagerlyScrub = types.NewBool(true)
+
+		log.Printf("[DEBUG] addHardDisk: %#v\n", disk)
+
+		return vm.AddDevice(context.TODO(), disk)
+	} else {
+		log.Printf("[DEBUG] addHardDisk: Disk already present.\n")
+
+		return nil
 	}
 }
