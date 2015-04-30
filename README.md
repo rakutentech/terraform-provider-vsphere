@@ -103,7 +103,6 @@ Each `network_interface` supports the following:
 Each `additional_disk` supports the following:
 
 * `size` - (Required) Size of additional hard disk in gigabytes. 
-* `datastore` - (Optional) Datastore name. By default, it's same as the datastore of `Hard disk 1`.
 * `iops` - (Optional) IOPS number. By default, it's unlimited.
 
 

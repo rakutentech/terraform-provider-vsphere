@@ -138,12 +138,6 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 							ForceNew: false,
 						},
 
-						"datastore": &schema.Schema{
-							Type:     schema.TypeString,
-							Optional: true,
-							ForceNew: false,
-						},
-
 						"iops": &schema.Schema{
 							Type:     schema.TypeInt,
 							Optional: true,
@@ -225,6 +219,18 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 	vm.networkInterfaces = networks
 	log.Printf("[DEBUG] network_interface init: %v", networks)
 
+	additionalDiskCount := d.Get("additional_disk.#").(int)
+	additionalDisks := make([]additionalHardDisk, additionalDiskCount)
+	for i := 0; i < additionalDiskCount; i++ {
+		prefix := fmt.Sprintf("additional_disk.%d", i)
+		additionalDisks[i].size = d.Get(prefix + ".size").(int64)
+		if d.Get(prefix+".iops") == nil {
+			additionalDisks[i].iops = d.Get(prefix + ".iops").(int64)
+		}
+	}
+	vm.additionalHardDisks = additionalDisks
+	log.Printf("[DEBUG] additional_disk init: %v", additionalDisks)
+
 	err := vm.deployVirtualMachine(client)
 	if err != nil {
 		return fmt.Errorf("error: %s", err)
@@ -241,7 +247,7 @@ func resourceVSphereVirtualMachineRead(d *schema.ResourceData, meta interface{})
 
 	client := meta.(*govmomi.Client)
 	finder := find.NewFinder(client.Client, true)
-	dc, err = getDatacenter(finder, d.Get("datacenter").(string))
+	dc, err = findDatacenter(finder, d.Get("datacenter").(string))
 	if err != nil {
 		return err
 	}
@@ -276,7 +282,7 @@ func resourceVSphereVirtualMachineDelete(d *schema.ResourceData, meta interface{
 
 	client := meta.(*govmomi.Client)
 	finder := find.NewFinder(client.Client, true)
-	dc, err = getDatacenter(finder, d.Get("datacenter").(string))
+	dc, err = findDatacenter(finder, d.Get("datacenter").(string))
 	if err != nil {
 		return err
 	}

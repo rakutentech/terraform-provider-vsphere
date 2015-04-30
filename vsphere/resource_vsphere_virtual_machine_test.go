@@ -139,5 +139,9 @@ resource "vsphere_virtual_machine" "foobar" {
         ip_address = "192.168.0.10"
         subnet_mask = "255.255.255.0"
     }
+    additional_disk {
+		size = 1
+		iops = 500
+	}
 }
 `

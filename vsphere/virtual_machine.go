@@ -24,27 +24,26 @@ type networkInterface struct {
 }
 
 type additionalHardDisk struct {
-	size      int
-	datastore string
-	iopsLimit int
+	size int64
+	iops int64
 }
 
 type virtualMachine struct {
-	name               string
-	datacenter         string
-	cluster            string
-	resourcePool       string
-	datastore          string
-	vcpu               int
-	memoryMb           int64
-	template           string
-	networkInterfaces  []networkInterface
-	addtionalHardDisks []additionalHardDisk
-	gateway            string
-	domain             string
-	timeZone           string
-	dnsSuffixes        []string
-	dnsServers         []string
+	name                string
+	datacenter          string
+	cluster             string
+	resourcePool        string
+	datastore           string
+	vcpu                int
+	memoryMb            int64
+	template            string
+	networkInterfaces   []networkInterface
+	additionalHardDisks []additionalHardDisk
+	gateway             string
+	domain              string
+	timeZone            string
+	dnsSuffixes         []string
+	dnsServers          []string
 }
 
 func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
@@ -70,31 +69,29 @@ func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 	}
 
 	finder := find.NewFinder(c.Client, true)
-	dc, err := getDatacenter(finder, vm.datacenter)
+	dc, err := findDatacenter(finder, vm.datacenter)
 	if err != nil {
 		return err
 	}
-
 	finder = finder.SetDatacenter(dc)
-	dcFolders, err := dc.Folders(context.TODO())
-	if err != nil {
-		return err
-	}
 
-	vmFolder := dcFolders.VmFolder
 	template, err := finder.VirtualMachine(context.TODO(), vm.template)
 	if err != nil {
 		return err
 	}
 	log.Printf("[DEBUG] template: %#v", template)
 
-	resourcePool, err := getResourcePool(finder, vm.resourcePool, vm.cluster)
+	resourcePool, err := findResourcePool(finder, vm.resourcePool, vm.cluster)
 	if err != nil {
 		return err
 	}
 	log.Printf("[DEBUG] resource pool: %#v", resourcePool)
 
-	datastore, err := getDatastore(c, finder, dcFolders, template, resourcePool, vm.datastore)
+	dcFolders, err := dc.Folders(context.TODO())
+	if err != nil {
+		return err
+	}
+	datastore, err := findDatastore(c, finder, dcFolders, template, resourcePool, vm.datastore)
 	if err != nil {
 		return err
 	}
@@ -165,7 +162,7 @@ func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 	}
 	log.Printf("[DEBUG] clone spec: %v", cloneSpec)
 
-	task, err := template.Clone(context.TODO(), vmFolder, vm.name, cloneSpec)
+	task, err := template.Clone(context.TODO(), dcFolders.VmFolder, vm.name, cloneSpec)
 	if err != nil {
 		return err
 	}
@@ -186,6 +183,13 @@ func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 		return err
 	}
 	log.Printf("[DEBUG] ip address: %v", ip)
+
+	for _, hd := range vm.additionalHardDisks {
+		err = addHardDisk(newVM, hd.size, hd.iops)
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -253,14 +257,14 @@ func findDatastoreForClone(c *govmomi.Client, storagePod *object.Folder, templat
 	return datastore, nil
 }
 
-// getDatastore gets Datastore object.
-func getDatastore(c *govmomi.Client, finder *find.Finder, f *object.DatacenterFolders, template *object.VirtualMachine, resourcePool *object.ResourcePool, name string) (*object.Datastore, error) {
+// findDatastore finds Datastore object.
+func findDatastore(c *govmomi.Client, finder *find.Finder, f *object.DatacenterFolders, template *object.VirtualMachine, resourcePool *object.ResourcePool, name string) (*object.Datastore, error) {
 	if name == "" {
 		datastore, err := finder.DefaultDatastore(context.TODO())
 		if err != nil {
 			return nil, err
 		}
-		log.Printf("[DEBUG] getDatastore: datastore: %#v", datastore)
+		log.Printf("[DEBUG] findDatastore: datastore: %#v", datastore)
 		return datastore, nil
 	} else {
 		var datastore *object.Datastore
@@ -269,7 +273,7 @@ func getDatastore(c *govmomi.Client, finder *find.Finder, f *object.DatacenterFo
 		if err != nil {
 			return nil, err
 		}
-		log.Printf("[DEBUG] getDatastore: reference: %#v", ref)
+		log.Printf("[DEBUG] findDatastore: reference: %#v", ref)
 
 		mor := ref.Reference()
 		if mor.Type == "StoragePod" {
@@ -281,17 +285,17 @@ func getDatastore(c *govmomi.Client, finder *find.Finder, f *object.DatacenterFo
 		} else {
 			datastore = object.NewDatastore(c.Client, mor)
 		}
-		log.Printf("[DEBUG] getDatastore: datastore: %#v", datastore)
+		log.Printf("[DEBUG] findDatastore: datastore: %#v", datastore)
 		return datastore, nil
 	}
 }
 
 func networkDevice(f *find.Finder, label string) (*types.VirtualDeviceConfigSpec, error) {
-	network, err := f.NetworkList(context.TODO(), "*"+label)
+	network, err := f.Network(context.TODO(), "*"+label)
 	if err != nil {
 		return nil, err
 	}
-	backing, err := network[0].EthernetCardBackingInfo(context.TODO())
+	backing, err := network.EthernetCardBackingInfo(context.TODO())
 	if err != nil {
 		return nil, err
 	}
@@ -313,8 +317,8 @@ func networkDevice(f *find.Finder, label string) (*types.VirtualDeviceConfigSpec
 	return &d, nil
 }
 
-// getDatacenter gets Datacenter object.
-func getDatacenter(f *find.Finder, name string) (*object.Datacenter, error) {
+// findDatacenter finds Datacenter object.
+func findDatacenter(f *find.Finder, name string) (*object.Datacenter, error) {
 	if name != "" {
 		dc, err := f.Datacenter(context.TODO(), name)
 		if err != nil {
@@ -330,8 +334,8 @@ func getDatacenter(f *find.Finder, name string) (*object.Datacenter, error) {
 	}
 }
 
-// getResourcePool finds ResourcePool object
-func getResourcePool(f *find.Finder, name, cluster string) (*object.ResourcePool, error) {
+// findResourcePool finds ResourcePool object
+func findResourcePool(f *find.Finder, name, cluster string) (*object.ResourcePool, error) {
 	if name == "" {
 		if cluster == "" {
 			resourcePool, err := f.DefaultResourcePool(context.TODO())
@@ -404,4 +408,39 @@ func createCustomizationSpec(name, domain, tz string, suffixes, servers []string
 		},
 		NicSettingMap: nics,
 	}
+}
+
+func addHardDisk(vm *object.VirtualMachine, size, iops int64) error {
+	devices, err := vm.Device(context.TODO())
+	if err != nil {
+		return err
+	}
+
+	controller, err := devices.FindDiskController("scsi")
+	if err != nil {
+		log.Printf("[ERROR] %s", err)
+	}
+	log.Printf("[DEBUG] %#v\n", controller)
+
+	disk := devices.CreateDisk(controller, "")
+
+	existing := devices.SelectByBackingInfo(disk.Backing)
+	log.Printf("[DEBUG] %#v\n", existing)
+
+	if len(existing) == 0 {
+		disk.CapacityInKB = int64(size * 1024 * 1024)
+		disk.StorageIOAllocation = &types.StorageIOAllocationInfo{
+			Limit: iops,
+		}
+	} else {
+		log.Printf("Disk already present\n")
+	}
+
+	backing := disk.Backing.(*types.VirtualDiskFlatVer2BackingInfo)
+
+	// eager zeroed thick virtual disk
+	backing.ThinProvisioned = types.NewBool(false)
+	backing.EagerlyScrub = types.NewBool(true)
+
+	return vm.AddDevice(context.TODO(), disk)
 }
