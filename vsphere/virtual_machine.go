@@ -418,29 +418,31 @@ func addHardDisk(vm *object.VirtualMachine, size, iops int64) error {
 
 	controller, err := devices.FindDiskController("scsi")
 	if err != nil {
-		log.Printf("[ERROR] %s", err)
+		return err
 	}
-	log.Printf("[DEBUG] %#v\n", controller)
 
 	disk := devices.CreateDisk(controller, "")
-
 	existing := devices.SelectByBackingInfo(disk.Backing)
-	log.Printf("[DEBUG] %#v\n", existing)
 
 	if len(existing) == 0 {
 		disk.CapacityInKB = int64(size * 1024 * 1024)
-		disk.StorageIOAllocation = &types.StorageIOAllocationInfo{
-			Limit: iops,
+		if iops != 0 {
+			disk.StorageIOAllocation = &types.StorageIOAllocationInfo{
+				Limit: iops,
+			}
 		}
+		backing := disk.Backing.(*types.VirtualDiskFlatVer2BackingInfo)
+
+		// eager zeroed thick virtual disk
+		backing.ThinProvisioned = types.NewBool(false)
+		backing.EagerlyScrub = types.NewBool(true)
+
+		log.Printf("[DEBUG] addHardDisk: %#v\n", disk)
+
+		return vm.AddDevice(context.TODO(), disk)
 	} else {
-		log.Printf("Disk already present\n")
+		log.Printf("[DEBUG] addHardDisk: Disk already present.\n")
+
+		return nil
 	}
-
-	backing := disk.Backing.(*types.VirtualDiskFlatVer2BackingInfo)
-
-	// eager zeroed thick virtual disk
-	backing.ThinProvisioned = types.NewBool(false)
-	backing.EagerlyScrub = types.NewBool(true)
-
-	return vm.AddDevice(context.TODO(), disk)
 }
