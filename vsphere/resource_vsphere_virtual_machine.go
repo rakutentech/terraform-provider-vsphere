@@ -223,9 +223,9 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 	additionalDisks := make([]additionalHardDisk, additionalDiskCount)
 	for i := 0; i < additionalDiskCount; i++ {
 		prefix := fmt.Sprintf("additional_disk.%d", i)
-		additionalDisks[i].size = d.Get(prefix + ".size").(int64)
+		additionalDisks[i].size = int64(d.Get(prefix + ".size").(int))
 		if d.Get(prefix+".iops") == nil {
-			additionalDisks[i].iops = d.Get(prefix + ".iops").(int64)
+			additionalDisks[i].iops = int64(d.Get(prefix + ".iops").(int))
 		}
 	}
 	vm.additionalHardDisks = additionalDisks
