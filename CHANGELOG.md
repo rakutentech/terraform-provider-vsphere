@@ -1,6 +1,13 @@
 CHANGELOG
 =========
 
+## 0.3.0 (Unreleased)
+
+Improvements:
+
+  - **New Argument:** `additional_disk` ([**@tkak**](https://github.com/tkak))
+
+
 ## 0.2.0 (April 28, 2015)
 
 Improvements:
