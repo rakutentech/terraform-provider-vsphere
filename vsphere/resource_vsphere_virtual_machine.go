@@ -256,9 +256,17 @@ func resourceVSphereVirtualMachineRead(d *schema.ResourceData, meta interface{})
 
 	client := meta.(*govmomi.Client)
 	finder := find.NewFinder(client.Client, true)
-	dc, err = findDatacenter(finder, d.Get("datacenter").(string))
-	if err != nil {
-		return err
+
+	if d.Get("datacenter").(string) != "" {
+		dc, err = finder.Datacenter(context.TODO(), d.Get("datacenter").(string))
+		if err != nil {
+			return err
+		}
+	} else {
+		dc, err = finder.DefaultDatacenter(context.TODO())
+		if err != nil {
+			return err
+		}
 	}
 
 	finder = finder.SetDatacenter(dc)
@@ -291,9 +299,17 @@ func resourceVSphereVirtualMachineDelete(d *schema.ResourceData, meta interface{
 
 	client := meta.(*govmomi.Client)
 	finder := find.NewFinder(client.Client, true)
-	dc, err = findDatacenter(finder, d.Get("datacenter").(string))
-	if err != nil {
-		return err
+
+	if d.Get("datacenter").(string) != "" {
+		dc, err = finder.Datacenter(context.TODO(), d.Get("datacenter").(string))
+		if err != nil {
+			return err
+		}
+	} else {
+		dc, err = finder.DefaultDatacenter(context.TODO())
+		if err != nil {
+			return err
+		}
 	}
 
 	finder = finder.SetDatacenter(dc)
