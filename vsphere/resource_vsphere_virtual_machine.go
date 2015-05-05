@@ -79,12 +79,14 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: false,
+				Default:  "vsphere.local",
 			},
 
 			"time_zone": &schema.Schema{
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: false,
+				Default:  "Etc/UTC",
 			},
 
 			"dns_suffix": &schema.Schema{
@@ -195,6 +197,8 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 			s := fmt.Sprintf("dns_suffix.%d", i)
 			vm.dnsSuffixes = append(vm.dnsSuffixes, d.Get(s).(string))
 		}
+	} else {
+		vm.dnsSuffixes = []string{"vsphere.local"}
 	}
 
 	dns_server := d.Get("dns_server.#").(int)
@@ -203,6 +207,11 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 		for i := 0; i < dns_server; i++ {
 			s := fmt.Sprintf("dns_server.%d", i)
 			vm.dnsServers = append(vm.dnsServers, d.Get(s).(string))
+		}
+	} else {
+		vm.dnsServers = []string{
+			"8.8.8.8",
+			"8.8.4.4",
 		}
 	}
 

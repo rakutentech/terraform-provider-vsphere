@@ -11,11 +11,6 @@ import (
 	"golang.org/x/net/context"
 )
 
-const (
-	defaultTimeZone = "Etc/UTC"
-	defaultDomain   = "vsphere.local"
-)
-
 type networkInterface struct {
 	deviceName string
 	label      string
@@ -47,27 +42,6 @@ type virtualMachine struct {
 }
 
 func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
-	if len(vm.dnsServers) == 0 {
-		vm.dnsServers = []string{
-			"8.8.8.8",
-			"8.8.4.4",
-		}
-	}
-
-	if len(vm.dnsSuffixes) == 0 {
-		vm.dnsSuffixes = []string{
-			defaultDomain,
-		}
-	}
-
-	if vm.domain == "" {
-		vm.domain = defaultDomain
-	}
-
-	if vm.timeZone == "" {
-		vm.timeZone = defaultTimeZone
-	}
-
 	finder := find.NewFinder(c.Client, true)
 	dc, err := findDatacenter(finder, vm.datacenter)
 	if err != nil {
