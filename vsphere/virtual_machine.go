@@ -362,7 +362,7 @@ func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 		return err
 	}
 
-	err = task.Wait(context.TODO())
+	_, err = task.WaitForResult(context.TODO(), nil)
 	if err != nil {
 		return err
 	}
