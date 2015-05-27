@@ -27,12 +27,6 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 				ForceNew: true,
 			},
 
-			"template": &schema.Schema{
-				Type:     schema.TypeString,
-				Required: true,
-				ForceNew: false,
-			},
-
 			"vcpu": &schema.Schema{
 				Type:     schema.TypeInt,
 				Required: true,
@@ -58,12 +52,6 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 			},
 
 			"resource_pool": &schema.Schema{
-				Type:     schema.TypeString,
-				Optional: true,
-				ForceNew: false,
-			},
-
-			"datastore": &schema.Schema{
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: false,
@@ -129,14 +117,26 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 				},
 			},
 
-			"additional_disk": &schema.Schema{
+			"disk": &schema.Schema{
 				Type:     schema.TypeList,
-				Optional: true,
+				Required: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
+						"template": &schema.Schema{
+							Type:     schema.TypeString,
+							Optional: true,
+							ForceNew: false,
+						},
+
+						"datastore": &schema.Schema{
+							Type:     schema.TypeString,
+							Optional: true,
+							ForceNew: false,
+						},
+
 						"size": &schema.Schema{
 							Type:     schema.TypeInt,
-							Required: true,
+							Optional: true,
 							ForceNew: false,
 						},
 
@@ -157,7 +157,6 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 
 	vm := virtualMachine{
 		name:     d.Get("name").(string),
-		template: d.Get("template").(string),
 		vcpu:     d.Get("vcpu").(int),
 		memoryMb: int64(d.Get("memory").(int)),
 	}
@@ -172,10 +171,6 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 
 	if v := d.Get("resource_pool"); v != nil {
 		vm.resourcePool = d.Get("resource_pool").(string)
-	}
-
-	if v := d.Get("datastore"); v != nil {
-		vm.datastore = d.Get("datastore").(string)
 	}
 
 	if v := d.Get("gateway"); v != nil {
@@ -228,21 +223,47 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 	vm.networkInterfaces = networks
 	log.Printf("[DEBUG] network_interface init: %v", networks)
 
-	additionalDiskCount := d.Get("additional_disk.#").(int)
-	additionalDisks := make([]additionalHardDisk, additionalDiskCount)
-	for i := 0; i < additionalDiskCount; i++ {
-		prefix := fmt.Sprintf("additional_disk.%d", i)
-		additionalDisks[i].size = int64(d.Get(prefix + ".size").(int))
-		if d.Get(prefix+".iops") == nil {
-			additionalDisks[i].iops = int64(d.Get(prefix + ".iops").(int))
+	diskCount := d.Get("disk.#").(int)
+	disks := make([]hardDisk, diskCount)
+	for i := 0; i < diskCount; i++ {
+		prefix := fmt.Sprintf("disk.%d", i)
+		if i == 0 {
+			if v := d.Get(prefix + ".template"); v != nil {
+				vm.template = d.Get(prefix + ".template").(string)
+			} else {
+				if v := d.Get(prefix + ".size"); v != nil {
+					disks[i].size = int64(d.Get(prefix + ".size").(int))
+				} else {
+					return fmt.Errorf("If template argument is not specified, size argument is required.")
+				}
+			}
+			if v := d.Get(prefix + ".datastore"); v != nil {
+				vm.datastore = d.Get(prefix + ".datastore").(string)
+			}
+		} else {
+			if v := d.Get(prefix + ".size"); v != nil {
+				disks[i].size = int64(d.Get(prefix + ".size").(int))
+			} else {
+				return fmt.Errorf("Size argument is required.")
+			}
+		}
+		if v := d.Get(prefix + ".iops"); v != nil {
+			disks[i].iops = int64(d.Get(prefix + ".iops").(int))
 		}
 	}
-	vm.additionalHardDisks = additionalDisks
-	log.Printf("[DEBUG] additional_disk init: %v", additionalDisks)
+	vm.hardDisks = disks
+	log.Printf("[DEBUG] disk init: %v", disks)
 
-	err := vm.deployVirtualMachine(client)
-	if err != nil {
-		return fmt.Errorf("error: %s", err)
+	if vm.template != "" {
+		err := vm.deployVirtualMachine(client)
+		if err != nil {
+			return fmt.Errorf("error: %s", err)
+		}
+	} else {
+		err := vm.createVirtualMachine(client)
+		if err != nil {
+			return fmt.Errorf("error: %s", err)
+		}
 	}
 	d.SetId(vm.name)
 	log.Printf("[INFO] Created virtual machine: %s", d.Id())
