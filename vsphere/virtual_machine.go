@@ -159,13 +159,13 @@ func (vm *virtualMachine) createVirtualMachine(c *govmomi.Client) error {
 			datastore = object.NewDatastore(c.Client, mor)
 		}
 	}
-	var mds mo.Datastore
 	log.Printf("[DEBUG] datastore: %#v", datastore)
+
+	var mds mo.Datastore
 	if err = datastore.Properties(context.TODO(), datastore.Reference(), []string{"name"}, &mds); err != nil {
 		return err
 	}
 	log.Printf("[DEBUG] datastore: %#v", mds.Name)
-
 	scsi, err := object.SCSIControllerTypes().CreateSCSIController("scsi")
 	if err != nil {
 		log.Printf("[ERROR] %s", err)
@@ -369,12 +369,10 @@ func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 	}
 	log.Printf("[DEBUG] ip address: %v", ip)
 
-	if len(vm.hardDisks) > 1 {
-		for _, hd := range vm.hardDisks {
-			err = addHardDisk(newVM, hd.size, hd.iops)
-			if err != nil {
-				return err
-			}
+	for i := 1; i < len(vm.hardDisks); i++ {
+		err = addHardDisk(newVM, vm.hardDisks[i].size, vm.hardDisks[i].iops)
+		if err != nil {
+			return err
 		}
 	}
 	return nil
