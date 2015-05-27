@@ -61,10 +61,12 @@ resource "vsphere_virtual_machine" "default" {
     name = "VM name"
     datacenter = "Datacenter name"
     cluster = "Cluster name"
-    datastore = "Datastore name"
-    template = "templates/centos-6.6-x86_64"
     vcpu = 2
     memory = 4096
+    disk {
+        datastore = "Datastore name"
+        template = "templates/centos-6.6-x86_64"
+    }
     gateway = "Gateway ip address"
     network_interface {
         label = "Network label name"
@@ -79,15 +81,14 @@ resource "vsphere_virtual_machine" "default" {
 The following arguments are supported.
 
 * `name` - (Required) Hostname of the virtual machine
-* `template` - (Required) VM template name
 * `vcpu` - (Required) A number of vCPUs
 * `memory` - (Required) Memory size in MB.
-* `network_interface` - (Required) Network configuration.
+* `disk` - (Required) Hard disk configuration. This can be specified multiple times for multiple disks. Structure is documented below.
+* `network_interface` - (Required) Network configuration. This can be specified multiple times for multiple networks. Structure is documented below.
+
 * `datacenter` - (Optional) Datacenter name
 * `cluster` - (Optional) Cluster name, a cluster is a group of hosts.
 * `resource_pool` - (Optional) Resource pool name.
-* `datastore` - (Optional) Datastore name
-* `additional_disk` - (Required) Additional hard disk configuration.
 * `gateway` - (Optional) Gateway IP address. If you use the static IP address, it's required.
 * `time_zone` - (Optional) Time zone configuration. By default, it's "Etc/UTC".
 * `domain` - (Optional) Domain configuration. By default, it's "vsphere.local".
@@ -100,23 +101,96 @@ Each `network_interface` supports the following:
 * `ip_address` - (Optional) IP address. DHCP configuration in default. If you use the static IP address, it's required.
 * `subnet_mask` - (Optional) Subnet mask. If you use the static IP address, it's required.
 
-Each `additional_disk` supports the following:
+The `disk` block supports the following:
 
-* `size` - (Required) Size of additional hard disk in gigabytes. 
+For the first disk,
+
+* `template` - (Optional) VM template name. If you want to deploy new VM from VM template, it's required. This argument is valid at the first disk. If not specified, empty disk will be created. For example, it's used for booting with iPXE.
+* `datastore` - (Optional) Datastore name.
+* `size` - (Optional) Size of hard disk in gigabytes. If not specified, it will inherit the size of the VM template. If `template` argument is not specified, it's required.
+* `iops` - (Optional) IOPS number. By default, it's unlimited.
+
+For the second and following disks,
+
+* `size` - (Required) Size of hard disk in gigabytes.
 * `iops` - (Optional) IOPS number. By default, it's unlimited.
 
 
-For example
+##### For example
+
+Example 1:
 
 ```
 resource "vsphere_virtual_machine" "default" {
-    name = "foo-1"
-    template = "centos-6.6-x86_64"    # Template name
+    name = "newvm-1"
     vcpu = 2
     memory = 4096
-    network_interface {
-        label = "VM Network"
+    disk {
+        template = "centos-6.6-x86_64"
     }
+    network_interface {
+        label = "label-1"
+    }
+}
+```
+
+Example 2:
+
+```
+resource "vsphere_virtual_machine" "default" {
+    name = "newvm-1"
+    domain = "foo"
+    datacenter = "datacenter-1"
+    cluster = "cluster-1"
+    vcpu = 2
+    memory = 4096
+    disk {
+        datastore = "datastore-1"
+        template = "centos-6.6-x86_64"
+        iops = 500
+    }
+    disk {
+        size = 20
+        iops = 500
+    }
+    gateway = "192.168.0.254"
+    network_interface {
+        label = "label-1"
+        ip_address = "192.168.0.1"
+        subnet_mask = "255.255.255.0"
+    }
+    network_interface {
+        label = "label-2"
+    }
+}
+```
+
+Example 3:
+
+```
+resource "vsphere_virtual_machine" "default" {
+    name = "newvm-1"
+    domain = "foo"
+    datacenter = "datacenter-1"
+    cluster = "cluster-1"
+    vcpu = 2
+    memory = 4096
+    disk {
+        datastore = "datastore-1"
+        size = 10
+        iops = 500
+    }
+    disk {
+        size = 20
+        iops = 500
+    }
+    network_interface {
+        label = "label-1"
+    }
+    network_interface {
+        label = "label-2"
+    }
+    time_zone = "Asia/Tokyo"
 }
 ```
 

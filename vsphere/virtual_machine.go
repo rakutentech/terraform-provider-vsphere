@@ -1,6 +1,7 @@
 package vsphere
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/vmware/govmomi"
@@ -18,27 +19,187 @@ type networkInterface struct {
 	subnetMask string
 }
 
-type additionalHardDisk struct {
+type hardDisk struct {
 	size int64
 	iops int64
 }
 
 type virtualMachine struct {
-	name                string
-	datacenter          string
-	cluster             string
-	resourcePool        string
-	datastore           string
-	vcpu                int
-	memoryMb            int64
-	template            string
-	networkInterfaces   []networkInterface
-	additionalHardDisks []additionalHardDisk
-	gateway             string
-	domain              string
-	timeZone            string
-	dnsSuffixes         []string
-	dnsServers          []string
+	name              string
+	datacenter        string
+	cluster           string
+	resourcePool      string
+	datastore         string
+	vcpu              int
+	memoryMb          int64
+	template          string
+	networkInterfaces []networkInterface
+	hardDisks         []hardDisk
+	gateway           string
+	domain            string
+	timeZone          string
+	dnsSuffixes       []string
+	dnsServers        []string
+}
+
+// createVirtualMchine creates a new VirtualMachine.
+func (vm *virtualMachine) createVirtualMachine(c *govmomi.Client) error {
+	var dc *object.Datacenter
+	var err error
+
+	finder := find.NewFinder(c.Client, true)
+
+	if vm.datacenter != "" {
+		dc, err = finder.Datacenter(context.TODO(), vm.datacenter)
+		if err != nil {
+			return err
+		}
+	} else {
+		dc, err = finder.DefaultDatacenter(context.TODO())
+		if err != nil {
+			return err
+		}
+	}
+	finder = finder.SetDatacenter(dc)
+
+	var resourcePool *object.ResourcePool
+	if vm.resourcePool == "" {
+		if vm.cluster == "" {
+			resourcePool, err = finder.DefaultResourcePool(context.TODO())
+			if err != nil {
+				return err
+			}
+		} else {
+			resourcePool, err = finder.ResourcePool(context.TODO(), "*"+vm.cluster+"/Resources")
+			if err != nil {
+				return err
+			}
+		}
+	} else {
+		resourcePool, err = finder.ResourcePool(context.TODO(), vm.resourcePool)
+		if err != nil {
+			return err
+		}
+	}
+	log.Printf("[DEBUG] resource pool: %#v", resourcePool)
+
+	dcFolders, err := dc.Folders(context.TODO())
+	if err != nil {
+		return err
+	}
+
+	// network
+	networkDevices := []types.BaseVirtualDeviceConfigSpec{}
+	for _, network := range vm.networkInterfaces {
+		// network device
+		nd, err := createNetworkDevice(finder, network.label)
+		if err != nil {
+			return err
+		}
+		networkDevices = append(networkDevices, nd)
+	}
+
+	// make config spec
+	configSpec := types.VirtualMachineConfigSpec{
+		GuestId:           "otherLinux64Guest",
+		Name:              vm.name,
+		NumCPUs:           vm.vcpu,
+		NumCoresPerSocket: 1,
+		MemoryMB:          vm.memoryMb,
+		DeviceChange:      networkDevices,
+	}
+	log.Printf("[DEBUG] virtual machine config spec: %v", configSpec)
+
+	var datastore *object.Datastore
+	if vm.datastore == "" {
+		datastore, err = finder.DefaultDatastore(context.TODO())
+		if err != nil {
+			return err
+		}
+	} else {
+		s := object.NewSearchIndex(c.Client)
+		ref, err := s.FindChild(context.TODO(), dcFolders.DatastoreFolder, vm.datastore)
+		if err != nil {
+			return err
+		}
+		log.Printf("[DEBUG] findDatastore: reference: %#v", ref)
+
+		mor := ref.Reference()
+		if mor.Type == "StoragePod" {
+			storagePod := object.NewFolder(c.Client, mor)
+
+			vmfr := dcFolders.VmFolder.Reference()
+			rpr := resourcePool.Reference()
+			spr := storagePod.Reference()
+
+			sps := types.StoragePlacementSpec{
+				Type:       "create",
+				ConfigSpec: &configSpec,
+				PodSelectionSpec: types.StorageDrsPodSelectionSpec{
+					StoragePod: &spr,
+				},
+				Folder:       &vmfr,
+				ResourcePool: &rpr,
+			}
+			log.Printf("[DEBUG] findDatastore: StoragePlacementSpec: %#v\n", sps)
+
+			srm := object.NewStorageResourceManager(c.Client)
+			rds, err := srm.RecommendDatastores(context.TODO(), sps)
+			if err != nil {
+				return err
+			}
+			log.Printf("[DEBUG] findDatastore: recommendDatastores: %#v\n", rds)
+
+			spa := rds.Recommendations[0].Action[0].(*types.StoragePlacementAction)
+			datastore = object.NewDatastore(c.Client, spa.Destination)
+			if err != nil {
+				return err
+			}
+		} else {
+			datastore = object.NewDatastore(c.Client, mor)
+		}
+	}
+	log.Printf("[DEBUG] datastore: %#v", datastore)
+
+	var mds mo.Datastore
+	if err = datastore.Properties(context.TODO(), datastore.Reference(), []string{"name"}, &mds); err != nil {
+		return err
+	}
+	log.Printf("[DEBUG] datastore: %#v", mds.Name)
+	scsi, err := object.SCSIControllerTypes().CreateSCSIController("scsi")
+	if err != nil {
+		log.Printf("[ERROR] %s", err)
+	}
+
+	configSpec.DeviceChange = append(configSpec.DeviceChange, &types.VirtualDeviceConfigSpec{
+		Operation: types.VirtualDeviceConfigSpecOperationAdd,
+		Device:    scsi,
+	})
+	configSpec.Files = &types.VirtualMachineFileInfo{VmPathName: fmt.Sprintf("[%s]", mds.Name)}
+
+	task, err := dcFolders.VmFolder.CreateVM(context.TODO(), configSpec, resourcePool, nil)
+	if err != nil {
+		log.Printf("[ERROR] %s", err)
+	}
+
+	_, err = task.WaitForResult(context.TODO(), nil)
+	if err != nil {
+		log.Printf("[ERROR] %s", err)
+	}
+
+	newVM, err := finder.VirtualMachine(context.TODO(), vm.name)
+	if err != nil {
+		return err
+	}
+	log.Printf("[DEBUG] new vm: %v", newVM)
+
+	for _, hd := range vm.hardDisks {
+		err = addHardDisk(newVM, hd.size, hd.iops)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // deployVirtualMchine deploys a new VirtualMachine.
@@ -208,8 +369,8 @@ func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 	}
 	log.Printf("[DEBUG] ip address: %v", ip)
 
-	for _, hd := range vm.additionalHardDisks {
-		err = addHardDisk(newVM, hd.size, hd.iops)
+	for i := 1; i < len(vm.hardDisks); i++ {
+		err = addHardDisk(newVM, vm.hardDisks[i].size, vm.hardDisks[i].iops)
 		if err != nil {
 			return err
 		}

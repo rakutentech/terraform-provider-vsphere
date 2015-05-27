@@ -33,9 +33,9 @@ func TestAccVSphereVirtualMachine_Basic(t *testing.T) {
 					name,
 					datacenter,
 					cluster,
+					label,
 					datastore,
 					template,
-					label,
 				),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckVSphereVirtualMachineExists("vsphere_virtual_machine.foobar", &vm),
@@ -129,8 +129,6 @@ resource "vsphere_virtual_machine" "foobar" {
     name = "%s"
     datacenter = "%s"
     cluster = "%s"
-    datastore = "%s"
-    template = "%s"
     vcpu = 2
     memory = 4096
     gateway = "192.168.0.254"
@@ -139,9 +137,14 @@ resource "vsphere_virtual_machine" "foobar" {
         ip_address = "192.168.0.10"
         subnet_mask = "255.255.255.0"
     }
-    additional_disk {
-		size = 1
-		iops = 500
-	}
+    disk {
+        datastore = "%s"
+        template = "%s"
+        iops = 500
+    }
+    disk {
+        size = 1
+        iops = 500
+    }
 }
 `
