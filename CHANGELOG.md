@@ -1,11 +1,11 @@
 CHANGELOG
 =========
 
-## 0.3.0 (Unreleased)
+## 0.3.0 (May 28, 2015)
 
 Improvements:
 
-  - **New Argument:** `additional_disk` ([**@tkak**](https://github.com/tkak))
+  - Support additional disk feature and create virtual machine feature with `disk` argument ([**@tkak**](https://github.com/tkak))
 
 
 ## 0.2.0 (April 28, 2015)
