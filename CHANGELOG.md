@@ -1,6 +1,13 @@
 CHANGELOG
 =========
 
+## 0.3.1 (Unreleased)
+
+Bugfixes:
+
+  - Change default network adapter type and disk type for creating new Virtual Machine ([**@tkak**](https://github.com/tkak))
+
+
 ## 0.3.0 (May 28, 2015)
 
 Improvements:
