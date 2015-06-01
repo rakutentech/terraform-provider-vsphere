@@ -13,10 +13,11 @@ import (
 )
 
 type networkInterface struct {
-	deviceName string
-	label      string
-	ipAddress  string
-	subnetMask string
+	deviceName  string
+	label       string
+	ipAddress   string
+	subnetMask  string
+	adapterType string // TODO: Make "adapter_type" argument
 }
 
 type hardDisk struct {
@@ -92,7 +93,7 @@ func (vm *virtualMachine) createVirtualMachine(c *govmomi.Client) error {
 	networkDevices := []types.BaseVirtualDeviceConfigSpec{}
 	for _, network := range vm.networkInterfaces {
 		// network device
-		nd, err := createNetworkDevice(finder, network.label)
+		nd, err := createNetworkDevice(finder, network.label, "e1000")
 		if err != nil {
 			return err
 		}
@@ -193,8 +194,11 @@ func (vm *virtualMachine) createVirtualMachine(c *govmomi.Client) error {
 	}
 	log.Printf("[DEBUG] new vm: %v", newVM)
 
+	log.Printf("[DEBUG] add hard disk: %v", vm.hardDisks)
 	for _, hd := range vm.hardDisks {
-		err = addHardDisk(newVM, hd.size, hd.iops)
+		log.Printf("[DEBUG] add hard disk: %v", hd.size)
+		log.Printf("[DEBUG] add hard disk: %v", hd.iops)
+		err = addHardDisk(newVM, hd.size, hd.iops, "thin")
 		if err != nil {
 			return err
 		}
@@ -279,7 +283,7 @@ func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 	networkConfigs := []types.CustomizationAdapterMapping{}
 	for _, network := range vm.networkInterfaces {
 		// network device
-		nd, err := createNetworkDevice(finder, network.label)
+		nd, err := createNetworkDevice(finder, network.label, "vmxnet3")
 		if err != nil {
 			return err
 		}
@@ -370,7 +374,7 @@ func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 	log.Printf("[DEBUG] ip address: %v", ip)
 
 	for i := 1; i < len(vm.hardDisks); i++ {
-		err = addHardDisk(newVM, vm.hardDisks[i].size, vm.hardDisks[i].iops)
+		err = addHardDisk(newVM, vm.hardDisks[i].size, vm.hardDisks[i].iops, "eager_zeroed")
 		if err != nil {
 			return err
 		}
@@ -459,7 +463,7 @@ func findDatastore(c *govmomi.Client, f *object.DatacenterFolders, vm *object.Vi
 }
 
 // createNetworkDevice creates VirtualDeviceConfigSpec for Network Device.
-func createNetworkDevice(f *find.Finder, label string) (*types.VirtualDeviceConfigSpec, error) {
+func createNetworkDevice(f *find.Finder, label, adapterType string) (*types.VirtualDeviceConfigSpec, error) {
 	network, err := f.Network(context.TODO(), "*"+label)
 	if err != nil {
 		return nil, err
@@ -470,10 +474,25 @@ func createNetworkDevice(f *find.Finder, label string) (*types.VirtualDeviceConf
 		return nil, err
 	}
 
-	return &types.VirtualDeviceConfigSpec{
-		Operation: types.VirtualDeviceConfigSpecOperationAdd,
-		Device: &types.VirtualVmxnet3{
-			types.VirtualVmxnet{
+	if adapterType == "vmxnet3" {
+		return &types.VirtualDeviceConfigSpec{
+			Operation: types.VirtualDeviceConfigSpecOperationAdd,
+			Device: &types.VirtualVmxnet3{
+				types.VirtualVmxnet{
+					types.VirtualEthernetCard{
+						VirtualDevice: types.VirtualDevice{
+							Key:     -1,
+							Backing: backing,
+						},
+						AddressType: string(types.VirtualEthernetCardMacTypeGenerated),
+					},
+				},
+			},
+		}, nil
+	} else if adapterType == "e1000" {
+		return &types.VirtualDeviceConfigSpec{
+			Operation: types.VirtualDeviceConfigSpecOperationAdd,
+			Device: &types.VirtualE1000{
 				types.VirtualEthernetCard{
 					VirtualDevice: types.VirtualDevice{
 						Key:     -1,
@@ -482,8 +501,10 @@ func createNetworkDevice(f *find.Finder, label string) (*types.VirtualDeviceConf
 					AddressType: string(types.VirtualEthernetCardMacTypeGenerated),
 				},
 			},
-		},
-	}, nil
+		}, nil
+	} else {
+		return nil, fmt.Errorf("Invalid network adapter type.")
+	}
 }
 
 // createVMRelocateSpec creates VirtualMachineRelocateSpec to set a place for a new VirtualMachine.
@@ -520,19 +541,22 @@ func createVMRelocateSpec(rp *object.ResourcePool, ds *object.Datastore, vm *obj
 }
 
 // addHardDisk adds a new Hard Disk to the VirtualMachine.
-func addHardDisk(vm *object.VirtualMachine, size, iops int64) error {
+func addHardDisk(vm *object.VirtualMachine, size, iops int64, diskType string) error {
 	devices, err := vm.Device(context.TODO())
 	if err != nil {
 		return err
 	}
+	log.Printf("[DEBUG] vm devices: %#v\n", devices)
 
 	controller, err := devices.FindDiskController("scsi")
 	if err != nil {
 		return err
 	}
+	log.Printf("[DEBUG] disk controller: %#v\n", controller)
 
 	disk := devices.CreateDisk(controller, "")
 	existing := devices.SelectByBackingInfo(disk.Backing)
+	log.Printf("[DEBUG] disk: %#v\n", disk)
 
 	if len(existing) == 0 {
 		disk.CapacityInKB = int64(size * 1024 * 1024)
@@ -543,11 +567,17 @@ func addHardDisk(vm *object.VirtualMachine, size, iops int64) error {
 		}
 		backing := disk.Backing.(*types.VirtualDiskFlatVer2BackingInfo)
 
-		// eager zeroed thick virtual disk
-		backing.ThinProvisioned = types.NewBool(false)
-		backing.EagerlyScrub = types.NewBool(true)
+		if diskType == "eager_zeroed" {
+			// eager zeroed thick virtual disk
+			backing.ThinProvisioned = types.NewBool(false)
+			backing.EagerlyScrub = types.NewBool(true)
+		} else if diskType == "thin" {
+			// thin provisioned virtual disk
+			backing.ThinProvisioned = types.NewBool(true)
+		}
 
 		log.Printf("[DEBUG] addHardDisk: %#v\n", disk)
+		log.Printf("[DEBUG] addHardDisk: %#v\n", disk.CapacityInKB)
 
 		return vm.AddDevice(context.TODO(), disk)
 	} else {
