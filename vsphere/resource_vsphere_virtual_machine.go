@@ -113,6 +113,12 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 							Optional: true,
 							ForceNew: false,
 						},
+
+						"adapter_type": &schema.Schema{
+							Type:     schema.TypeString,
+							Optional: true,
+							ForceNew: false,
+						},
 					},
 				},
 			},
@@ -228,26 +234,26 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 	for i := 0; i < diskCount; i++ {
 		prefix := fmt.Sprintf("disk.%d", i)
 		if i == 0 {
-			if v := d.Get(prefix + ".template"); v != nil {
+			if v := d.Get(prefix + ".template"); v != "" {
 				vm.template = d.Get(prefix + ".template").(string)
 			} else {
-				if v := d.Get(prefix + ".size"); v != nil {
+				if v := d.Get(prefix + ".size"); v != "" {
 					disks[i].size = int64(d.Get(prefix + ".size").(int))
 				} else {
 					return fmt.Errorf("If template argument is not specified, size argument is required.")
 				}
 			}
-			if v := d.Get(prefix + ".datastore"); v != nil {
+			if v := d.Get(prefix + ".datastore"); v != "" {
 				vm.datastore = d.Get(prefix + ".datastore").(string)
 			}
 		} else {
-			if v := d.Get(prefix + ".size"); v != nil {
+			if v := d.Get(prefix + ".size"); v != "" {
 				disks[i].size = int64(d.Get(prefix + ".size").(int))
 			} else {
 				return fmt.Errorf("Size argument is required.")
 			}
 		}
-		if v := d.Get(prefix + ".iops"); v != nil {
+		if v := d.Get(prefix + ".iops"); v != "" {
 			disks[i].iops = int64(d.Get(prefix + ".iops").(int))
 		}
 	}
