@@ -167,28 +167,28 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 		memoryMb: int64(d.Get("memory").(int)),
 	}
 
-	if v := d.Get("datacenter"); v != nil {
-		vm.datacenter = d.Get("datacenter").(string)
+	if v, ok := d.GetOk("datacenter"); ok {
+		vm.datacenter = v.(string)
 	}
 
-	if v := d.Get("cluster"); v != nil {
-		vm.cluster = d.Get("cluster").(string)
+	if v, ok := d.GetOk("cluster"); ok {
+		vm.cluster = v.(string)
 	}
 
-	if v := d.Get("resource_pool"); v != nil {
-		vm.resourcePool = d.Get("resource_pool").(string)
+	if v, ok := d.GetOk("resource_pool"); ok {
+		vm.resourcePool = v.(string)
 	}
 
-	if v := d.Get("gateway"); v != nil {
-		vm.gateway = d.Get("gateway").(string)
+	if v, ok := d.GetOk("gateway"); ok {
+		vm.gateway = v.(string)
 	}
 
-	if v := d.Get("domain"); v != nil {
-		vm.domain = d.Get("domain").(string)
+	if v, ok := d.GetOk("domain"); ok {
+		vm.gateway = v.(string)
 	}
 
-	if v := d.Get("time_zone"); v != nil {
-		vm.timeZone = d.Get("time_zone").(string)
+	if v, ok := d.GetOk("time_zone"); ok {
+		vm.gateway = v.(string)
 	}
 
 	dns_suffix := d.Get("dns_suffix.#").(int)
@@ -284,8 +284,8 @@ func resourceVSphereVirtualMachineRead(d *schema.ResourceData, meta interface{})
 	client := meta.(*govmomi.Client)
 	finder := find.NewFinder(client.Client, true)
 
-	if d.Get("datacenter").(string) != "" {
-		dc, err = finder.Datacenter(context.TODO(), d.Get("datacenter").(string))
+	if v, ok := d.GetOk("datacenter"); ok {
+		dc, err = finder.Datacenter(context.TODO(), v.(string))
 		if err != nil {
 			return err
 		}
@@ -327,8 +327,8 @@ func resourceVSphereVirtualMachineDelete(d *schema.ResourceData, meta interface{
 	client := meta.(*govmomi.Client)
 	finder := find.NewFinder(client.Client, true)
 
-	if d.Get("datacenter").(string) != "" {
-		dc, err = finder.Datacenter(context.TODO(), d.Get("datacenter").(string))
+	if v, ok := d.GetOk("datacenter"); ok {
+		dc, err = finder.Datacenter(context.TODO(), v.(string))
 		if err != nil {
 			return err
 		}
