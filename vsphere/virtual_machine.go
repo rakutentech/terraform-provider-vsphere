@@ -183,7 +183,7 @@ func (vm *virtualMachine) createVirtualMachine(c *govmomi.Client) error {
 		log.Printf("[ERROR] %s", err)
 	}
 
-	_, err = task.WaitForResult(context.TODO(), nil)
+	err = task.Wait(context.TODO())
 	if err != nil {
 		log.Printf("[ERROR] %s", err)
 	}
