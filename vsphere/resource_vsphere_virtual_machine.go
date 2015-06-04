@@ -13,6 +13,15 @@ import (
 	"golang.org/x/net/context"
 )
 
+var DefaultDNSSuffixes = []string{
+	"vsphere.local",
+}
+
+var DefaultDNSServers = []string{
+	"8.8.8.8",
+	"8.8.4.4",
+}
+
 func resourceVSphereVirtualMachine() *schema.Resource {
 	return &schema.Resource{
 		Create: resourceVSphereVirtualMachineCreate,
@@ -199,7 +208,7 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 			vm.dnsSuffixes = append(vm.dnsSuffixes, d.Get(s).(string))
 		}
 	} else {
-		vm.dnsSuffixes = []string{"vsphere.local"}
+		vm.dnsSuffixes = DefaultDNSSuffixes
 	}
 
 	dns_server := d.Get("dns_server.#").(int)
@@ -210,10 +219,7 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 			vm.dnsServers = append(vm.dnsServers, d.Get(s).(string))
 		}
 	} else {
-		vm.dnsServers = []string{
-			"8.8.8.8",
-			"8.8.4.4",
-		}
+		vm.dnsServers = DefaultDNSServers
 	}
 
 	networksCount := d.Get("network_interface.#").(int)
