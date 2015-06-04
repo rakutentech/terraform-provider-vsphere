@@ -347,12 +347,22 @@ func resourceVSphereVirtualMachineDelete(d *schema.ResourceData, meta interface{
 
 	log.Printf("[INFO] Deleting virtual machine: %s", d.Id())
 
-	_, err = vm.PowerOff(context.TODO())
+	task, err := vm.PowerOff(context.TODO())
 	if err != nil {
 		return err
 	}
 
-	_, err = vm.Destroy(context.TODO())
+	err = task.Wait(context.TODO())
+	if err != nil {
+		return err
+	}
+
+	task, err = vm.Destroy(context.TODO())
+	if err != nil {
+		return err
+	}
+
+	err = task.Wait(context.TODO())
 	if err != nil {
 		return err
 	}
