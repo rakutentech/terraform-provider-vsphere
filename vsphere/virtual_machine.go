@@ -295,6 +295,8 @@ func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 				Ip: &types.CustomizationDhcpIpGenerator{},
 			}
 		} else {
+			log.Printf("[DEBUG] gateway: %v", vm.gateway)
+			log.Printf("[DEBUG] ip address: %v", network.ipAddress)
 			ipSetting = types.CustomizationIPSettings{
 				Gateway: []string{
 					vm.gateway,

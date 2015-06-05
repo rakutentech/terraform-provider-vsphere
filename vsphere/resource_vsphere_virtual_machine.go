@@ -193,11 +193,11 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 	}
 
 	if v, ok := d.GetOk("domain"); ok {
-		vm.gateway = v.(string)
+		vm.domain = v.(string)
 	}
 
 	if v, ok := d.GetOk("time_zone"); ok {
-		vm.gateway = v.(string)
+		vm.timeZone = v.(string)
 	}
 
 	dns_suffix := d.Get("dns_suffix.#").(int)

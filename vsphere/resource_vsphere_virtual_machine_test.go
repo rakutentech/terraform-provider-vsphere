@@ -150,9 +150,5 @@ resource "vsphere_virtual_machine" "foobar" {
         size = 1
         iops = 500
     }
-    disk {
-        size = 1
-        iops = 500
-    }
 }
 `
