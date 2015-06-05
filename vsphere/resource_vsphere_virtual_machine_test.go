@@ -20,7 +20,9 @@ func TestAccVSphereVirtualMachine_Basic(t *testing.T) {
 	cluster := os.Getenv("VSPHERE_CLUSTER")
 	datastore := os.Getenv("VSPHERE_DATASTORE")
 	template := os.Getenv("VSPHERE_TEMPLATE")
+	gateway := os.Getenv("VSPHERE_NETWORK_GATEWAY")
 	label := os.Getenv("VSPHERE_NETWORK_LABEL")
+	ip_address := os.Getenv("VSPHERE_NETWORK_IP_ADDRESS")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
@@ -33,7 +35,9 @@ func TestAccVSphereVirtualMachine_Basic(t *testing.T) {
 					name,
 					datacenter,
 					cluster,
+					gateway,
 					label,
+					ip_address,
 					datastore,
 					template,
 				),
@@ -131,15 +135,19 @@ resource "vsphere_virtual_machine" "foobar" {
     cluster = "%s"
     vcpu = 2
     memory = 4096
-    gateway = "192.168.0.254"
+    gateway = "%s"
     network_interface {
         label = "%s"
-        ip_address = "192.168.0.10"
+        ip_address = "%s"
         subnet_mask = "255.255.255.0"
     }
     disk {
         datastore = "%s"
         template = "%s"
+        iops = 500
+    }
+    disk {
+        size = 1
         iops = 500
     }
     disk {
