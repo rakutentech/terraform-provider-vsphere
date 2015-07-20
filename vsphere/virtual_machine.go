@@ -265,9 +265,13 @@ func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 			return err
 		}
 	} else {
-		datastore, err = findDatastore(c, dcFolders, template, resourcePool, vm.datastore)
+		datastore, err = finder.Datastore(context.TODO(), vm.datastore)
 		if err != nil {
-			return err
+			// TODO: datastore cluster support in govmomi finder function
+			datastore, err = findDatastore(c, dcFolders, template, resourcePool, vm.datastore)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	log.Printf("[DEBUG] datastore: %#v", datastore)
