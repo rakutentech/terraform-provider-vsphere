@@ -17,7 +17,7 @@ build:
     - tcnksm/gox:
         os: "darwin linux windows"
         arch: "386 amd64"
-    - tcnksm/zip:
+    - tcnksm/zip@0.1.7:
         input: ${WERCKER_OUTPUT_DIR}/pkg
         output: ${WERCKER_OUTPUT_DIR}/dist
 deploy:
