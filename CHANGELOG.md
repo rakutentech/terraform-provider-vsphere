@@ -1,6 +1,13 @@
 CHANGELOG
 =========
 
+## 0.4.0 (Unreleased)
+
+Improvements:
+
+  - Read VM network and datastore ([**@tkak**](https://github.com/tkak))
+
+
 ## 0.3.1 (July 24, 2015)
 
 Bugfixes:
