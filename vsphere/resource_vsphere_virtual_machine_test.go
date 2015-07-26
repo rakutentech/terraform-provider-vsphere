@@ -13,7 +13,7 @@ import (
 	"golang.org/x/net/context"
 )
 
-func TestAccVSphereVirtualMachine_Basic(t *testing.T) {
+func TestAccVSphereVirtualMachine_basic(t *testing.T) {
 	var vm virtualMachine
 	datacenter := os.Getenv("VSPHERE_DATACENTER")
 	cluster := os.Getenv("VSPHERE_CLUSTER")
@@ -41,7 +41,6 @@ func TestAccVSphereVirtualMachine_Basic(t *testing.T) {
 				),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckVSphereVirtualMachineExists("vsphere_virtual_machine.foo", &vm),
-					//		testAccCheckVSphereVirtualMachineAttributes(&vm),
 					resource.TestCheckResourceAttr(
 						"vsphere_virtual_machine.foo", "name", "terraform-test"),
 					resource.TestCheckResourceAttr(
@@ -50,13 +49,23 @@ func TestAccVSphereVirtualMachine_Basic(t *testing.T) {
 						"vsphere_virtual_machine.foo", "vcpu", "2"),
 					resource.TestCheckResourceAttr(
 						"vsphere_virtual_machine.foo", "memory", "4096"),
+					resource.TestCheckResourceAttr(
+						"vsphere_virtual_machine.foo", "disk.#", "2"),
+					resource.TestCheckResourceAttr(
+						"vsphere_virtual_machine.foo", "disk.0.datastore", datastore),
+					resource.TestCheckResourceAttr(
+						"vsphere_virtual_machine.foo", "disk.0.template", template),
+					resource.TestCheckResourceAttr(
+						"vsphere_virtual_machine.foo", "network_interface.#", "1"),
+					resource.TestCheckResourceAttr(
+						"vsphere_virtual_machine.foo", "network_interface.0.label", label),
 				),
 			},
 		},
 	})
 }
 
-func TestAccVSphereVirtualMachine_Dhcp(t *testing.T) {
+func TestAccVSphereVirtualMachine_dhcp(t *testing.T) {
 	var vm virtualMachine
 	datacenter := os.Getenv("VSPHERE_DATACENTER")
 	cluster := os.Getenv("VSPHERE_CLUSTER")
@@ -82,7 +91,6 @@ func TestAccVSphereVirtualMachine_Dhcp(t *testing.T) {
 				),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckVSphereVirtualMachineExists("vsphere_virtual_machine.bar", &vm),
-					//		testAccCheckVSphereVirtualMachineAttributes(&vm),
 					resource.TestCheckResourceAttr(
 						"vsphere_virtual_machine.bar", "name", "terraform-test"),
 					resource.TestCheckResourceAttr(
@@ -91,6 +99,16 @@ func TestAccVSphereVirtualMachine_Dhcp(t *testing.T) {
 						"vsphere_virtual_machine.bar", "vcpu", "2"),
 					resource.TestCheckResourceAttr(
 						"vsphere_virtual_machine.bar", "memory", "4096"),
+					resource.TestCheckResourceAttr(
+						"vsphere_virtual_machine.bar", "disk.#", "1"),
+					resource.TestCheckResourceAttr(
+						"vsphere_virtual_machine.bar", "disk.0.datastore", datastore),
+					resource.TestCheckResourceAttr(
+						"vsphere_virtual_machine.bar", "disk.0.template", template),
+					resource.TestCheckResourceAttr(
+						"vsphere_virtual_machine.bar", "network_interface.#", "1"),
+					resource.TestCheckResourceAttr(
+						"vsphere_virtual_machine.bar", "network_interface.0.label", label),
 				),
 			},
 		},
@@ -194,29 +212,6 @@ resource "vsphere_virtual_machine" "foo" {
     disk {
         size = 1
         iops = 500
-    }
-}
-`
-
-const testAccCheckVSphereVirtualMachineConfig_dhcp = `
-resource "vsphere_virtual_machine" "bar" {
-    name = "terraform-test"
-    datacenter = "%s"
-    cluster = "%s"
-    vcpu = 2
-    memory = 4096
-    network_interface {
-        label = "%s"
-    }
-    disk {
-        datastore = "%s"
-        template = "%s"
-    }
-
-    connection {
-        host = "${self.network_interface.0.ip_address}"
-        user = "root"
-        password = "%s"
     }
 }
 `

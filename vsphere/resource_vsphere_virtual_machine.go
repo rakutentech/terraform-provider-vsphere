@@ -3,6 +3,7 @@ package vsphere
 import (
 	"fmt"
 	"log"
+	"net"
 
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/vmware/govmomi"
@@ -114,12 +115,14 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 						"ip_address": &schema.Schema{
 							Type:     schema.TypeString,
 							Optional: true,
-							ForceNew: true,
+							Computed: true,
+							ForceNew: false,
 						},
 
 						"subnet_mask": &schema.Schema{
 							Type:     schema.TypeString,
 							Optional: true,
+							Computed: true,
 							ForceNew: false,
 						},
 
@@ -229,6 +232,8 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 		networks[i].label = d.Get(prefix + ".label").(string)
 		if v := d.Get(prefix + ".ip_address"); v != nil {
 			networks[i].ipAddress = d.Get(prefix + ".ip_address").(string)
+		}
+		if v := d.Get(prefix + ".subnet_mask"); v != nil {
 			networks[i].subnetMask = d.Get(prefix + ".subnet_mask").(string)
 		}
 	}
@@ -324,10 +329,17 @@ func resourceVSphereVirtualMachineRead(d *schema.ResourceData, meta interface{})
 	networkInterfaces := make([]map[string]interface{}, len(mvm.Guest.Net))
 	for i, v := range mvm.Guest.Net {
 		log.Printf("[DEBUG] %#v", v.Network)
-		log.Printf("[DEBUG] %#v", v.IpAddress[0])
 		networkInterfaces[i] = make(map[string]interface{})
 		networkInterfaces[i]["label"] = v.Network
-		networkInterfaces[i]["ip_address"] = v.IpAddress[0]
+		if len(v.IpAddress) > 0 {
+			log.Printf("[DEBUG] %#v", v.IpAddress[0])
+			networkInterfaces[i]["ip_address"] = v.IpAddress[0]
+
+			m := net.CIDRMask(v.IpConfig.IpAddress[0].PrefixLength, 32)
+			subnetMask := net.IPv4(m[0], m[1], m[2], m[3])
+			networkInterfaces[i]["subnet_mask"] = subnetMask.String()
+			log.Printf("[DEBUG] %#v", subnetMask.String())
+		}
 	}
 	d.Set("network_interface", networkInterfaces)
 
