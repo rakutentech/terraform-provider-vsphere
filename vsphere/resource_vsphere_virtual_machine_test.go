@@ -195,9 +195,28 @@ resource "vsphere_virtual_machine" "foo" {
         size = 1
         iops = 500
     }
+}
+`
+
+const testAccCheckVSphereVirtualMachineConfig_dhcp = `
+resource "vsphere_virtual_machine" "bar" {
+    name = "terraform-test"
+    datacenter = "%s"
+    cluster = "%s"
+    vcpu = 2
+    memory = 4096
+    network_interface {
+        label = "%s"
+    }
     disk {
-        size = 1
-        iops = 500
+        datastore = "%s"
+        template = "%s"
+    }
+
+    connection {
+        host = "${self.network_interface.0.ip_address}"
+        user = "root"
+        password = "%s"
     }
 }
 `

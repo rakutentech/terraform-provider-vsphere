@@ -114,7 +114,7 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 						"ip_address": &schema.Schema{
 							Type:     schema.TypeString,
 							Optional: true,
-							ForceNew: false,
+							ForceNew: true,
 						},
 
 						"subnet_mask": &schema.Schema{
@@ -313,11 +313,48 @@ func resourceVSphereVirtualMachineRead(d *schema.ResourceData, meta interface{})
 	var mvm mo.VirtualMachine
 
 	collector := property.DefaultCollector(client.Client)
-	err = collector.RetrieveOne(context.TODO(), vm.Reference(), []string{"summary"}, &mvm)
+	if err := collector.RetrieveOne(context.TODO(), vm.Reference(), []string{"guest", "summary", "datastore"}, &mvm); err != nil {
+		log.Printf("[ERROR] %#v", err)
+	}
+
+	log.Printf("[DEBUG] %#v", dc)
+	log.Printf("[DEBUG] %#v", mvm.Summary.Config)
+	log.Printf("[DEBUG] %#v", mvm.Guest.Net)
+
+	networkInterfaces := make([]map[string]interface{}, len(mvm.Guest.Net))
+	for i, v := range mvm.Guest.Net {
+		log.Printf("[DEBUG] %#v", v.Network)
+		log.Printf("[DEBUG] %#v", v.IpAddress[0])
+		networkInterfaces[i] = make(map[string]interface{})
+		networkInterfaces[i]["label"] = v.Network
+		networkInterfaces[i]["ip_address"] = v.IpAddress[0]
+	}
+	d.Set("network_interface", networkInterfaces)
+
+	var rootDatastore string
+	for _, v := range mvm.Datastore {
+		var md mo.Datastore
+		if err := collector.RetrieveOne(context.TODO(), v, []string{"name", "parent"}, &md); err != nil {
+			log.Printf("[ERROR] %#v", err)
+		}
+		if md.Parent.Type == "StoragePod" {
+			var msp mo.StoragePod
+			if err := collector.RetrieveOne(context.TODO(), *md.Parent, []string{"name"}, &msp); err != nil {
+				log.Printf("[ERROR] %#v", err)
+			}
+			rootDatastore = msp.Name
+			log.Printf("[DEBUG] %#v", msp.Name)
+		} else {
+			rootDatastore = md.Name
+			log.Printf("[DEBUG] %#v", md.Name)
+		}
+		break
+	}
 
 	d.Set("datacenter", dc)
 	d.Set("memory", mvm.Summary.Config.MemorySizeMB)
 	d.Set("cpu", mvm.Summary.Config.NumCpu)
+	d.Set("datastore", rootDatastore)
 
 	return nil
 }

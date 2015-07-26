@@ -1,11 +1,15 @@
 CHANGELOG
 =========
 
-## 0.3.1 (Unreleased)
+## 0.3.1 (July 24, 2015)
 
 Bugfixes:
 
   - Change default network adapter type and disk type for creating new Virtual Machine ([**@tkak**](https://github.com/tkak))
+  - Add task.Wait function to fix a failure in destroying VM ([**@tkak**](https://github.com/tkak))
+  - Move default DNS suffixes value and default DNS servers value to global scope ([**@tkak**](https://github.com/tkak))
+  - Use GetOk function ([**@tkak**](https://github.com/tkak))
+  - Fix findDatastore bug ([**@tkak**](https://github.com/tkak))
 
 
 ## 0.3.0 (May 28, 2015)
