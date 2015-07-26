@@ -17,11 +17,10 @@ RUN cd $GOPATH/src/github.com/hashicorp/terraform/ && make updatedeps && make de
 RUN go get -u github.com/vmware/govmomi
 EOT
 
-sudo docker build --no-cache -t ${NAME} .
-#sudo docker build -t ${NAME} .
+#sudo docker build --no-cache -t ${NAME} .
+sudo docker build -t ${NAME} .
 sudo docker run --rm -v "$(pwd)":${SRC_PATH}/${NAME} \
     -w ${SRC_PATH}/${NAME}/vsphere \
-    -e "VSPHERE_VM_NAME=${VSPHERE_VM_NAME}" \
     -e "VSPHERE_DATACENTER=${VSPHERE_DATACENTER}" \
     -e "VSPHERE_CLUSTER=${VSPHERE_CLUSTER}" \
     -e "VSPHERE_DATASTORE=${VSPHERE_DATASTORE}" \
@@ -32,4 +31,6 @@ sudo docker run --rm -v "$(pwd)":${SRC_PATH}/${NAME} \
     -e "VSPHERE_VCENTER=${VSPHERE_VCENTER}" \
     -e "VSPHERE_NETWORK_GATEWAY=${VSPHERE_NETWORK_GATEWAY}" \
     -e "VSPHERE_NETWORK_IP_ADDRESS=${VSPHERE_NETWORK_IP_ADDRESS}" \
+    -e "VSPHERE_NETWORK_LABEL_DHCP=${VSPHERE_NETWORK_LABEL_DHCP}" \
+    -e "VSPHERE_VM_PASSWORD=${VSPHERE_VM_PASSWORD}" \
     ${NAME} go test -v

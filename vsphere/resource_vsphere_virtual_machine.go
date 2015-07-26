@@ -3,6 +3,7 @@ package vsphere
 import (
 	"fmt"
 	"log"
+	"net"
 
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/vmware/govmomi"
@@ -114,12 +115,14 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 						"ip_address": &schema.Schema{
 							Type:     schema.TypeString,
 							Optional: true,
+							Computed: true,
 							ForceNew: false,
 						},
 
 						"subnet_mask": &schema.Schema{
 							Type:     schema.TypeString,
 							Optional: true,
+							Computed: true,
 							ForceNew: false,
 						},
 
@@ -229,6 +232,8 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 		networks[i].label = d.Get(prefix + ".label").(string)
 		if v := d.Get(prefix + ".ip_address"); v != nil {
 			networks[i].ipAddress = d.Get(prefix + ".ip_address").(string)
+		}
+		if v := d.Get(prefix + ".subnet_mask"); v != nil {
 			networks[i].subnetMask = d.Get(prefix + ".subnet_mask").(string)
 		}
 	}
@@ -313,11 +318,55 @@ func resourceVSphereVirtualMachineRead(d *schema.ResourceData, meta interface{})
 	var mvm mo.VirtualMachine
 
 	collector := property.DefaultCollector(client.Client)
-	err = collector.RetrieveOne(context.TODO(), vm.Reference(), []string{"summary"}, &mvm)
+	if err := collector.RetrieveOne(context.TODO(), vm.Reference(), []string{"guest", "summary", "datastore"}, &mvm); err != nil {
+		log.Printf("[ERROR] %#v", err)
+	}
+
+	log.Printf("[DEBUG] %#v", dc)
+	log.Printf("[DEBUG] %#v", mvm.Summary.Config)
+	log.Printf("[DEBUG] %#v", mvm.Guest.Net)
+
+	networkInterfaces := make([]map[string]interface{}, len(mvm.Guest.Net))
+	for i, v := range mvm.Guest.Net {
+		log.Printf("[DEBUG] %#v", v.Network)
+		networkInterfaces[i] = make(map[string]interface{})
+		networkInterfaces[i]["label"] = v.Network
+		if len(v.IpAddress) > 0 {
+			log.Printf("[DEBUG] %#v", v.IpAddress[0])
+			networkInterfaces[i]["ip_address"] = v.IpAddress[0]
+
+			m := net.CIDRMask(v.IpConfig.IpAddress[0].PrefixLength, 32)
+			subnetMask := net.IPv4(m[0], m[1], m[2], m[3])
+			networkInterfaces[i]["subnet_mask"] = subnetMask.String()
+			log.Printf("[DEBUG] %#v", subnetMask.String())
+		}
+	}
+	d.Set("network_interface", networkInterfaces)
+
+	var rootDatastore string
+	for _, v := range mvm.Datastore {
+		var md mo.Datastore
+		if err := collector.RetrieveOne(context.TODO(), v, []string{"name", "parent"}, &md); err != nil {
+			log.Printf("[ERROR] %#v", err)
+		}
+		if md.Parent.Type == "StoragePod" {
+			var msp mo.StoragePod
+			if err := collector.RetrieveOne(context.TODO(), *md.Parent, []string{"name"}, &msp); err != nil {
+				log.Printf("[ERROR] %#v", err)
+			}
+			rootDatastore = msp.Name
+			log.Printf("[DEBUG] %#v", msp.Name)
+		} else {
+			rootDatastore = md.Name
+			log.Printf("[DEBUG] %#v", md.Name)
+		}
+		break
+	}
 
 	d.Set("datacenter", dc)
 	d.Set("memory", mvm.Summary.Config.MemorySizeMB)
 	d.Set("cpu", mvm.Summary.Config.NumCpu)
+	d.Set("datastore", rootDatastore)
 
 	return nil
 }
