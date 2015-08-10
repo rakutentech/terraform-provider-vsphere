@@ -368,6 +368,12 @@ func resourceVSphereVirtualMachineRead(d *schema.ResourceData, meta interface{})
 	d.Set("cpu", mvm.Summary.Config.NumCpu)
 	d.Set("datastore", rootDatastore)
 
+	// Initialize the connection info
+	d.SetConnInfo(map[string]string{
+		"type": "ssh",
+		"host": networkInterfaces[0]["ip_address"].(string),
+	})
+
 	return nil
 }
 
