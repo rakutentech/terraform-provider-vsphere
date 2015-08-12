@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"time"
 
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/vmware/govmomi"
@@ -166,6 +167,11 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 					},
 				},
 			},
+
+			"boot_delay": &schema.Schema{
+				Type:     schema.TypeInt,
+				Optional: true,
+			},
 		},
 	}
 }
@@ -230,11 +236,11 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 	for i := 0; i < networksCount; i++ {
 		prefix := fmt.Sprintf("network_interface.%d", i)
 		networks[i].label = d.Get(prefix + ".label").(string)
-		if v := d.Get(prefix + ".ip_address"); v != nil {
-			networks[i].ipAddress = d.Get(prefix + ".ip_address").(string)
+		if v, ok := d.GetOk(prefix + ".ip_address"); ok {
+			networks[i].ipAddress = v.(string)
 		}
-		if v := d.Get(prefix + ".subnet_mask"); v != nil {
-			networks[i].subnetMask = d.Get(prefix + ".subnet_mask").(string)
+		if v, ok := d.GetOk(prefix + ".subnet_mask"); ok {
+			networks[i].subnetMask = v.(string)
 		}
 	}
 	vm.networkInterfaces = networks
@@ -245,27 +251,27 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 	for i := 0; i < diskCount; i++ {
 		prefix := fmt.Sprintf("disk.%d", i)
 		if i == 0 {
-			if v := d.Get(prefix + ".template"); v != "" {
-				vm.template = d.Get(prefix + ".template").(string)
+			if v, ok := d.GetOk(prefix + ".template"); ok {
+				vm.template = v.(string)
 			} else {
-				if v := d.Get(prefix + ".size"); v != "" {
-					disks[i].size = int64(d.Get(prefix + ".size").(int))
+				if v, ok := d.GetOk(prefix + ".size"); ok {
+					disks[i].size = int64(v.(int))
 				} else {
 					return fmt.Errorf("If template argument is not specified, size argument is required.")
 				}
 			}
-			if v := d.Get(prefix + ".datastore"); v != "" {
-				vm.datastore = d.Get(prefix + ".datastore").(string)
+			if v, ok := d.GetOk(prefix + ".datastore"); ok {
+				vm.datastore = v.(string)
 			}
 		} else {
-			if v := d.Get(prefix + ".size"); v != "" {
-				disks[i].size = int64(d.Get(prefix + ".size").(int))
+			if v, ok := d.GetOk(prefix + ".size"); ok {
+				disks[i].size = int64(v.(int))
 			} else {
 				return fmt.Errorf("Size argument is required.")
 			}
 		}
-		if v := d.Get(prefix + ".iops"); v != "" {
-			disks[i].iops = int64(d.Get(prefix + ".iops").(int))
+		if v, ok := d.GetOk(prefix + ".iops"); ok {
+			disks[i].iops = int64(v.(int))
 		}
 	}
 	vm.hardDisks = disks
@@ -280,6 +286,54 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 		err := vm.createVirtualMachine(client)
 		if err != nil {
 			return fmt.Errorf("error: %s", err)
+		}
+	}
+
+	if _, ok := d.GetOk("network_interface.0.ip_address"); !ok {
+		if v, ok := d.GetOk("boot_delay"); ok {
+			var dc *object.Datacenter
+			var err error
+			finder := find.NewFinder(client.Client, true)
+
+			if v, ok := d.GetOk("datacenter"); ok {
+				dc, err = finder.Datacenter(context.TODO(), v.(string))
+				if err != nil {
+					return err
+				}
+			} else {
+				dc, err = finder.DefaultDatacenter(context.TODO())
+				if err != nil {
+					return err
+				}
+			}
+
+			finder = finder.SetDatacenter(dc)
+			vm, err := finder.VirtualMachine(context.TODO(), d.Get("name").(string))
+			if err != nil {
+				log.Printf("[ERROR] Virtual machine not found: %s", d.Get("name").(string))
+				d.SetId("")
+				return nil
+			}
+
+			var mvm mo.VirtualMachine
+			collector := property.DefaultCollector(client.Client)
+			if err := collector.RetrieveOne(context.TODO(), vm.Reference(), []string{"summary"}, &mvm); err != nil {
+				log.Printf("[ERROR] %#v", err)
+			}
+			bootTime := *mvm.Summary.Runtime.BootTime
+			duration := time.Since(bootTime)
+			remainingBootDelay := float64(v.(int)) - float64(duration.Seconds())
+			if remainingBootDelay > 0 {
+				time.Sleep(time.Duration(int(remainingBootDelay)))
+			}
+
+			ip, err := vm.WaitForIP(context.TODO())
+			if err != nil {
+				log.Printf("[ERROR] Wait for IP function error, %s", err)
+				d.SetId("")
+				return nil
+			}
+			log.Printf("[DEBUG] new ip address after boot delay: %v", ip)
 		}
 	}
 	d.SetId(vm.name)
