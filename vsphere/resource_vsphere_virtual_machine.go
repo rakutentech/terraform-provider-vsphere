@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"time"
 
+	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
@@ -166,6 +168,11 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 					},
 				},
 			},
+
+			"boot_delay": &schema.Schema{
+				Type:     schema.TypeInt,
+				Optional: true,
+			},
 		},
 	}
 }
@@ -230,11 +237,11 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 	for i := 0; i < networksCount; i++ {
 		prefix := fmt.Sprintf("network_interface.%d", i)
 		networks[i].label = d.Get(prefix + ".label").(string)
-		if v := d.Get(prefix + ".ip_address"); v != nil {
-			networks[i].ipAddress = d.Get(prefix + ".ip_address").(string)
+		if v, ok := d.GetOk(prefix + ".ip_address"); ok {
+			networks[i].ipAddress = v.(string)
 		}
-		if v := d.Get(prefix + ".subnet_mask"); v != nil {
-			networks[i].subnetMask = d.Get(prefix + ".subnet_mask").(string)
+		if v, ok := d.GetOk(prefix + ".subnet_mask"); ok {
+			networks[i].subnetMask = v.(string)
 		}
 	}
 	vm.networkInterfaces = networks
@@ -245,27 +252,27 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 	for i := 0; i < diskCount; i++ {
 		prefix := fmt.Sprintf("disk.%d", i)
 		if i == 0 {
-			if v := d.Get(prefix + ".template"); v != "" {
-				vm.template = d.Get(prefix + ".template").(string)
+			if v, ok := d.GetOk(prefix + ".template"); ok {
+				vm.template = v.(string)
 			} else {
-				if v := d.Get(prefix + ".size"); v != "" {
-					disks[i].size = int64(d.Get(prefix + ".size").(int))
+				if v, ok := d.GetOk(prefix + ".size"); ok {
+					disks[i].size = int64(v.(int))
 				} else {
 					return fmt.Errorf("If template argument is not specified, size argument is required.")
 				}
 			}
-			if v := d.Get(prefix + ".datastore"); v != "" {
-				vm.datastore = d.Get(prefix + ".datastore").(string)
+			if v, ok := d.GetOk(prefix + ".datastore"); ok {
+				vm.datastore = v.(string)
 			}
 		} else {
-			if v := d.Get(prefix + ".size"); v != "" {
-				disks[i].size = int64(d.Get(prefix + ".size").(int))
+			if v, ok := d.GetOk(prefix + ".size"); ok {
+				disks[i].size = int64(v.(int))
 			} else {
 				return fmt.Errorf("Size argument is required.")
 			}
 		}
-		if v := d.Get(prefix + ".iops"); v != "" {
-			disks[i].iops = int64(d.Get(prefix + ".iops").(int))
+		if v, ok := d.GetOk(prefix + ".iops"); ok {
+			disks[i].iops = int64(v.(int))
 		}
 	}
 	vm.hardDisks = disks
@@ -280,6 +287,24 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 		err := vm.createVirtualMachine(client)
 		if err != nil {
 			return fmt.Errorf("error: %s", err)
+		}
+	}
+
+	if _, ok := d.GetOk("network_interface.0.ip_address"); !ok {
+		if v, ok := d.GetOk("boot_delay"); ok {
+			stateConf := &resource.StateChangeConf{
+				Pending:    []string{"pending"},
+				Target:     "active",
+				Refresh:    waitForNetworkingActive(client, vm.datacenter, vm.name),
+				Timeout:    600 * time.Second,
+				Delay:      time.Duration(v.(int)) * time.Second,
+				MinTimeout: 2 * time.Second,
+			}
+
+			_, err := stateConf.WaitForState()
+			if err != nil {
+				return fmt.Errorf("error: %s", err)
+			}
 		}
 	}
 	d.SetId(vm.name)
@@ -368,6 +393,12 @@ func resourceVSphereVirtualMachineRead(d *schema.ResourceData, meta interface{})
 	d.Set("cpu", mvm.Summary.Config.NumCpu)
 	d.Set("datastore", rootDatastore)
 
+	// Initialize the connection info
+	d.SetConnInfo(map[string]string{
+		"type": "ssh",
+		"host": networkInterfaces[0]["ip_address"].(string),
+	})
+
 	return nil
 }
 
@@ -424,4 +455,37 @@ func resourceVSphereVirtualMachineDelete(d *schema.ResourceData, meta interface{
 
 	d.SetId("")
 	return nil
+}
+
+func waitForNetworkingActive(client *govmomi.Client, datacenter, name string) resource.StateRefreshFunc {
+	return func() (interface{}, string, error) {
+		finder := find.NewFinder(client.Client, true)
+		dc, err := finder.Datacenter(context.TODO(), datacenter)
+		if err != nil {
+			log.Printf("[ERROR] %#v", err)
+			return nil, "", err
+		}
+
+		finder = finder.SetDatacenter(dc)
+		vm, err := finder.VirtualMachine(context.TODO(), name)
+		if err != nil {
+			log.Printf("[ERROR] %#v", err)
+			return nil, "", err
+		}
+
+		var mvm mo.VirtualMachine
+		collector := property.DefaultCollector(client.Client)
+		if err := collector.RetrieveOne(context.TODO(), vm.Reference(), []string{"summary"}, &mvm); err != nil {
+			log.Printf("[ERROR] %#v", err)
+			return nil, "", err
+		}
+
+		if mvm.Summary.Guest.IpAddress != "" {
+			log.Printf("[DEBUG] IP address with DHCP: %v", mvm.Summary.Guest.IpAddress)
+			return mvm.Summary, "active", err
+		} else {
+			log.Printf("[DEBUG] Waiting for IP address")
+			return nil, "pending", err
+		}
+	}
 }
