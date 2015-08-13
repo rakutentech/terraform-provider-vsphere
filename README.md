@@ -85,7 +85,6 @@ The following arguments are supported.
 * `memory` - (Required) Memory size in MB.
 * `disk` - (Required) Hard disk configuration. This can be specified multiple times for multiple disks. Structure is documented below.
 * `network_interface` - (Required) Network configuration. This can be specified multiple times for multiple networks. Structure is documented below.
-
 * `datacenter` - (Optional) Datacenter name
 * `cluster` - (Optional) Cluster name, a cluster is a group of hosts.
 * `resource_pool` - (Optional) Resource pool name.
@@ -94,7 +93,7 @@ The following arguments are supported.
 * `domain` - (Optional) Domain configuration. By default, it's "vsphere.local".
 * `dns_suffix` - (Optional) List of DNS suffix. By default, it's `["vsphere.local"]`.
 * `dns_server` - (Optional) List of DNS server. By default, it's `["8.8.8.8", "8.8.4.4"]`.
-* `boot_delay` - (Optional) Time to wait for dhcp. Only used if network_interface.0 is not static.
+* `boot_delay` - (Optional) Time in seconds to wait for DHCP. Only used if `network_interface.0` is not static.
 
 Each `network_interface` supports the following:
 
