@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
@@ -291,49 +292,19 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 
 	if _, ok := d.GetOk("network_interface.0.ip_address"); !ok {
 		if v, ok := d.GetOk("boot_delay"); ok {
-			var dc *object.Datacenter
-			var err error
-			finder := find.NewFinder(client.Client, true)
-
-			if v, ok := d.GetOk("datacenter"); ok {
-				dc, err = finder.Datacenter(context.TODO(), v.(string))
-				if err != nil {
-					return err
-				}
-			} else {
-				dc, err = finder.DefaultDatacenter(context.TODO())
-				if err != nil {
-					return err
-				}
+			stateConf := &resource.StateChangeConf{
+				Pending:    []string{"pending"},
+				Target:     "active",
+				Refresh:    waitForNetworkingActive(client, vm.datacenter, vm.name),
+				Timeout:    600 * time.Second,
+				Delay:      time.Duration(v.(int)) * time.Second,
+				MinTimeout: 2 * time.Second,
 			}
 
-			finder = finder.SetDatacenter(dc)
-			vm, err := finder.VirtualMachine(context.TODO(), d.Get("name").(string))
+			_, err := stateConf.WaitForState()
 			if err != nil {
-				log.Printf("[ERROR] Virtual machine not found: %s", d.Get("name").(string))
-				d.SetId("")
-				return nil
+				return fmt.Errorf("error: %s", err)
 			}
-
-			var mvm mo.VirtualMachine
-			collector := property.DefaultCollector(client.Client)
-			if err := collector.RetrieveOne(context.TODO(), vm.Reference(), []string{"summary"}, &mvm); err != nil {
-				log.Printf("[ERROR] %#v", err)
-			}
-			bootTime := *mvm.Summary.Runtime.BootTime
-			duration := time.Since(bootTime)
-			remainingBootDelay := float64(v.(int)) - float64(duration.Seconds())
-			if remainingBootDelay > 0 {
-				time.Sleep(time.Duration(int(remainingBootDelay)))
-			}
-
-			ip, err := vm.WaitForIP(context.TODO())
-			if err != nil {
-				log.Printf("[ERROR] Wait for IP function error, %s", err)
-				d.SetId("")
-				return nil
-			}
-			log.Printf("[DEBUG] new ip address after boot delay: %v", ip)
 		}
 	}
 	d.SetId(vm.name)
@@ -484,4 +455,37 @@ func resourceVSphereVirtualMachineDelete(d *schema.ResourceData, meta interface{
 
 	d.SetId("")
 	return nil
+}
+
+func waitForNetworkingActive(client *govmomi.Client, datacenter, name string) resource.StateRefreshFunc {
+	return func() (interface{}, string, error) {
+		finder := find.NewFinder(client.Client, true)
+		dc, err := finder.Datacenter(context.TODO(), datacenter)
+		if err != nil {
+			log.Printf("[ERROR] %#v", err)
+			return nil, "", err
+		}
+
+		finder = finder.SetDatacenter(dc)
+		vm, err := finder.VirtualMachine(context.TODO(), name)
+		if err != nil {
+			log.Printf("[ERROR] %#v", err)
+			return nil, "", err
+		}
+
+		var mvm mo.VirtualMachine
+		collector := property.DefaultCollector(client.Client)
+		if err := collector.RetrieveOne(context.TODO(), vm.Reference(), []string{"summary"}, &mvm); err != nil {
+			log.Printf("[ERROR] %#v", err)
+			return nil, "", err
+		}
+
+		if mvm.Summary.Guest.IpAddress != "" {
+			log.Printf("[DEBUG] IP address with DHCP: %v", mvm.Summary.Guest.IpAddress)
+			return mvm.Summary, "active", err
+		} else {
+			log.Printf("[DEBUG] Waiting for IP address")
+			return nil, "pending", err
+		}
+	}
 }

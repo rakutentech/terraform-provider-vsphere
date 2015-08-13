@@ -94,6 +94,7 @@ The following arguments are supported.
 * `domain` - (Optional) Domain configuration. By default, it's "vsphere.local".
 * `dns_suffix` - (Optional) List of DNS suffix. By default, it's `["vsphere.local"]`.
 * `dns_server` - (Optional) List of DNS server. By default, it's `["8.8.8.8", "8.8.4.4"]`.
+* `boot_delay` - (Optional) Time to wait for dhcp. Only used if network_interface.0 is not static.
 
 Each `network_interface` supports the following:
 
