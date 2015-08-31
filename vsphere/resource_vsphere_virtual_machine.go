@@ -180,23 +180,28 @@ func resourceVSphereVirtualMachine() *schema.Resource {
 func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(*govmomi.Client)
 
-	vm := virtualMachine{
-		name:     d.Get("name").(string),
-		vcpu:     d.Get("vcpu").(int),
-		memoryMb: int64(d.Get("memory").(int)),
-	}
+	var dc, resourcePool, cluster string
 
 	if v, ok := d.GetOk("datacenter"); ok {
-		vm.datacenter = v.(string)
+		dc = v.(string)
+	}
+
+	vm, err := NewVirtualMachine(client, dc)
+	if err != nil {
+		return fmt.Errorf("error: %s", err)
 	}
 
 	if v, ok := d.GetOk("cluster"); ok {
-		vm.cluster = v.(string)
+		cluster = v.(string)
 	}
-
 	if v, ok := d.GetOk("resource_pool"); ok {
-		vm.resourcePool = v.(string)
+		resourcePool = v.(string)
 	}
+	vm.resourcePool, err = vm.findResourcePool(resourcePool, cluster)
+
+	vm.name = d.Get("name").(string)
+	vm.vcpu = d.Get("vcpu").(int)
+	vm.memoryMb = int64(d.Get("memory").(int))
 
 	if v, ok := d.GetOk("gateway"); ok {
 		vm.gateway = v.(string)
@@ -253,7 +258,11 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 		prefix := fmt.Sprintf("disk.%d", i)
 		if i == 0 {
 			if v, ok := d.GetOk(prefix + ".template"); ok {
-				vm.template = v.(string)
+				vm.template, err = vm.finder.VirtualMachine(context.TODO(), v.(string))
+				if err != nil {
+					return err
+				}
+				log.Printf("[DEBUG] template: %#v", vm.template)
 			} else {
 				if v, ok := d.GetOk(prefix + ".size"); ok {
 					disks[i].size = int64(v.(int))
@@ -262,7 +271,10 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 				}
 			}
 			if v, ok := d.GetOk(prefix + ".datastore"); ok {
-				vm.datastore = v.(string)
+				vm.datastore, err = vm.findDatastore(v.(string))
+				if err != nil {
+					return err
+				}
 			}
 		} else {
 			if v, ok := d.GetOk(prefix + ".size"); ok {
@@ -278,7 +290,7 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 	vm.hardDisks = disks
 	log.Printf("[DEBUG] disk init: %v", disks)
 
-	if vm.template != "" {
+	if vm.template != nil {
 		err := vm.deployVirtualMachine(client)
 		if err != nil {
 			return fmt.Errorf("error: %s", err)
@@ -295,7 +307,7 @@ func resourceVSphereVirtualMachineCreate(d *schema.ResourceData, meta interface{
 			stateConf := &resource.StateChangeConf{
 				Pending:    []string{"pending"},
 				Target:     "active",
-				Refresh:    waitForNetworkingActive(client, vm.datacenter, vm.name),
+				Refresh:    waitForNetworkingActive(client, dc, vm.name),
 				Timeout:    600 * time.Second,
 				Delay:      time.Duration(v.(int)) * time.Second,
 				MinTimeout: 2 * time.Second,
@@ -457,25 +469,21 @@ func resourceVSphereVirtualMachineDelete(d *schema.ResourceData, meta interface{
 	return nil
 }
 
-func waitForNetworkingActive(client *govmomi.Client, datacenter, name string) resource.StateRefreshFunc {
+func waitForNetworkingActive(client *govmomi.Client, dcName, vmName string) resource.StateRefreshFunc {
 	return func() (interface{}, string, error) {
-		finder := find.NewFinder(client.Client, true)
-		dc, err := finder.Datacenter(context.TODO(), datacenter)
+		vm, err := NewVirtualMachine(client, dcName)
 		if err != nil {
-			log.Printf("[ERROR] %#v", err)
 			return nil, "", err
 		}
 
-		finder = finder.SetDatacenter(dc)
-		vm, err := finder.VirtualMachine(context.TODO(), name)
+		vmObj, err := vm.finder.VirtualMachine(context.TODO(), vmName)
 		if err != nil {
-			log.Printf("[ERROR] %#v", err)
 			return nil, "", err
 		}
 
 		var mvm mo.VirtualMachine
 		collector := property.DefaultCollector(client.Client)
-		if err := collector.RetrieveOne(context.TODO(), vm.Reference(), []string{"summary"}, &mvm); err != nil {
+		if err := collector.RetrieveOne(context.TODO(), vmObj.Reference(), []string{"summary"}, &mvm); err != nil {
 			log.Printf("[ERROR] %#v", err)
 			return nil, "", err
 		}

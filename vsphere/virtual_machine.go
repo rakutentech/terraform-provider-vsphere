@@ -7,6 +7,7 @@ import (
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
+	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
 	"golang.org/x/net/context"
@@ -27,13 +28,8 @@ type hardDisk struct {
 
 type virtualMachine struct {
 	name              string
-	datacenter        string
-	cluster           string
-	resourcePool      string
-	datastore         string
 	vcpu              int
 	memoryMb          int64
-	template          string
 	networkInterfaces []networkInterface
 	hardDisks         []hardDisk
 	gateway           string
@@ -41,59 +37,183 @@ type virtualMachine struct {
 	timeZone          string
 	dnsSuffixes       []string
 	dnsServers        []string
+
+	datacenter   *object.Datacenter
+	resourcePool *object.ResourcePool
+	template     *object.VirtualMachine
+	datastore    *object.Datastore
+	finder       *find.Finder
+	client       *vim25.Client
+	err          error
 }
 
-// createVirtualMchine creates a new VirtualMachine.
-func (vm *virtualMachine) createVirtualMachine(c *govmomi.Client) error {
+func NewVirtualMachine(c *govmomi.Client, dcName string) (*virtualMachine, error) {
 	var dc *object.Datacenter
 	var err error
 
 	finder := find.NewFinder(c.Client, true)
 
-	if vm.datacenter != "" {
-		dc, err = finder.Datacenter(context.TODO(), vm.datacenter)
+	if dcName != "" {
+		dc, err = finder.Datacenter(context.TODO(), dcName)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	} else {
 		dc, err = finder.DefaultDatacenter(context.TODO())
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
-	finder = finder.SetDatacenter(dc)
+	log.Printf("[DEBUG] datacenter: %#v", dc)
 
-	var resourcePool *object.ResourcePool
-	if vm.resourcePool == "" {
-		if vm.cluster == "" {
-			resourcePool, err = finder.DefaultResourcePool(context.TODO())
+	vm := &virtualMachine{
+		finder:     finder.SetDatacenter(dc),
+		datacenter: dc,
+	}
+	return vm, nil
+}
+
+func (vm *virtualMachine) findResourcePool(resourcePoolName, clusterName string) (*object.ResourcePool, error) {
+	var rp *object.ResourcePool
+	var err error
+
+	if resourcePoolName == "" {
+		if clusterName == "" {
+			rp, err = vm.finder.DefaultResourcePool(context.TODO())
 			if err != nil {
-				return err
+				return nil, err
 			}
 		} else {
-			resourcePool, err = finder.ResourcePool(context.TODO(), "*"+vm.cluster+"/Resources")
+			rp, err = vm.finder.ResourcePool(context.TODO(), "*"+clusterName+"/Resources")
 			if err != nil {
-				return err
+				return nil, err
 			}
 		}
 	} else {
-		resourcePool, err = finder.ResourcePool(context.TODO(), vm.resourcePool)
+		rp, err = vm.finder.ResourcePool(context.TODO(), resourcePoolName)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
-	log.Printf("[DEBUG] resource pool: %#v", resourcePool)
+	log.Printf("[DEBUG] resource pool: %#v", rp)
+	return rp, err
+}
 
-	dcFolders, err := dc.Folders(context.TODO())
-	if err != nil {
-		return err
+func (vm *virtualMachine) findDatastore(dcName, path string) (*object.Datastore, error) {
+	var ds *object.Datastore
+	var err error
+
+	if path == "" {
+		ds, err = vm.finder.DefaultDatastore(context.TODO())
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		mol, err := vm.finder.ManagedObjectList(context.TODO(), "/"+dcName+"/"+path)
+		if len(mol) == 0 {
+			return nil, fmt.Errorf("Datastore is missing.")
+		} else if len(mol) == 1 {
+			switch o := mol[0].Object.(type) {
+			case mo.StoragePod:
+				templateMor := vm.template.Reference()
+
+				storagePod := object.NewFolder(vm.client, o.Reference())
+				storagePodMor := storagePod.Reference()
+				resourcePoolMor := vm.resourcePool.Reference()
+
+				dcFolders, err := vm.datacenter.Folders(context.TODO())
+				if err != nil {
+					return nil, err
+				}
+				vmFolderMor := dcFolders.VmFolder.Reference()
+
+				sps := types.StoragePlacementSpec{
+					Type:       "create",
+					ConfigSpec: &configSpec,
+					PodSelectionSpec: types.StorageDrsPodSelectionSpec{
+						StoragePod: &storagePodMor,
+					},
+					Folder:       &vmFolderMor,
+					ResourcePool: &resourcePoolMor,
+				}
+				log.Printf("[DEBUG] findDatastore: StoragePlacementSpec: %#v\n", sps)
+
+				var vmo mo.VirtualMachine
+				err = vm.template.Properties(context.TODO(), templateMor, []string{"datastore"}, &vmo)
+				if err != nil {
+					return nil, err
+				}
+				ds := object.NewDatastore(vm.client, vmo.Datastore[0])
+
+				devices, err := vm.template.Device(context.TODO())
+				if err != nil {
+					return nil, err
+				}
+
+				var key int
+				for _, d := range devices.SelectByType((*types.VirtualDisk)(nil)) {
+					key = d.GetVirtualDevice().Key
+					log.Printf("[DEBUG] findDatastore: virtual devices: %#v\n", d.GetVirtualDevice())
+				}
+
+				sps := types.StoragePlacementSpec{
+					Type: "clone",
+					Vm:   &templateMor,
+					PodSelectionSpec: types.StorageDrsPodSelectionSpec{
+						StoragePod: &storagePodMor,
+					},
+					CloneSpec: &types.VirtualMachineCloneSpec{
+						Location: types.VirtualMachineRelocateSpec{
+							Disk: []types.VirtualMachineRelocateSpecDiskLocator{
+								types.VirtualMachineRelocateSpecDiskLocator{
+									Datastore:       ds.Reference(),
+									DiskBackingInfo: &types.VirtualDiskFlatVer2BackingInfo{},
+									DiskId:          key,
+								},
+							},
+							Pool: &resourcePoolMor,
+						},
+						PowerOn:  false,
+						Template: false,
+					},
+					CloneName: "dummy",
+					Folder:    &vmFolderMor,
+				}
+				log.Printf("[DEBUG] findDatastore: StoragePlacementSpec: %#v\n", sps)
+
+				ds, err = findDatastoreFromStoragePod(vm.client, sps)
+			case mo.Datastore:
+				ds = object.NewDatastore(vm.client, o.Reference())
+			}
+		}
 	}
+	log.Printf("[DEBUG] datastore: %#v", ds)
+	return ds, err
+}
 
+// findDatastore finds Datastore object.
+func findDatastoreFromStoragePod(c *vim25.Client, sps types.StoragePlacementSpec) (*object.Datastore, error) {
+	srm := object.NewStorageResourceManager(c)
+	rds, err := srm.RecommendDatastores(context.TODO(), sps)
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("[DEBUG] findDatastore: recommendDatastores: %#v\n", rds)
+
+	spa := rds.Recommendations[0].Action[0].(*types.StoragePlacementAction)
+	datastore := object.NewDatastore(c, spa.Destination)
+	log.Printf("[DEBUG] findDatastore: datastore: %#v", datastore)
+
+	return datastore, nil
+}
+
+// createVirtualMchine creates a new VirtualMachine.
+func (vm *virtualMachine) createVirtualMachine(c *govmomi.Client) error {
 	// network
 	networkDevices := []types.BaseVirtualDeviceConfigSpec{}
 	for _, network := range vm.networkInterfaces {
 		// network device
-		nd, err := createNetworkDevice(finder, network.label, "e1000")
+		nd, err := createNetworkDevice(vm.finder, network.label, "e1000")
 		if err != nil {
 			return err
 		}
@@ -111,59 +231,13 @@ func (vm *virtualMachine) createVirtualMachine(c *govmomi.Client) error {
 	}
 	log.Printf("[DEBUG] virtual machine config spec: %v", configSpec)
 
-	var datastore *object.Datastore
-	if vm.datastore == "" {
-		datastore, err = finder.DefaultDatastore(context.TODO())
-		if err != nil {
-			return err
-		}
-	} else {
-		s := object.NewSearchIndex(c.Client)
-		ref, err := s.FindChild(context.TODO(), dcFolders.DatastoreFolder, vm.datastore)
-		if err != nil {
-			return err
-		}
-		log.Printf("[DEBUG] findDatastore: reference: %#v", ref)
-
-		mor := ref.Reference()
-		if mor.Type == "StoragePod" {
-			storagePod := object.NewFolder(c.Client, mor)
-
-			vmfr := dcFolders.VmFolder.Reference()
-			rpr := resourcePool.Reference()
-			spr := storagePod.Reference()
-
-			sps := types.StoragePlacementSpec{
-				Type:       "create",
-				ConfigSpec: &configSpec,
-				PodSelectionSpec: types.StorageDrsPodSelectionSpec{
-					StoragePod: &spr,
-				},
-				Folder:       &vmfr,
-				ResourcePool: &rpr,
-			}
-			log.Printf("[DEBUG] findDatastore: StoragePlacementSpec: %#v\n", sps)
-
-			srm := object.NewStorageResourceManager(c.Client)
-			rds, err := srm.RecommendDatastores(context.TODO(), sps)
-			if err != nil {
-				return err
-			}
-			log.Printf("[DEBUG] findDatastore: recommendDatastores: %#v\n", rds)
-
-			spa := rds.Recommendations[0].Action[0].(*types.StoragePlacementAction)
-			datastore = object.NewDatastore(c.Client, spa.Destination)
-			if err != nil {
-				return err
-			}
-		} else {
-			datastore = object.NewDatastore(c.Client, mor)
-		}
+	dcFolders, err := vm.datacenter.Folders(context.TODO())
+	if err != nil {
+		return err
 	}
-	log.Printf("[DEBUG] datastore: %#v", datastore)
 
 	var mds mo.Datastore
-	if err = datastore.Properties(context.TODO(), datastore.Reference(), []string{"name"}, &mds); err != nil {
+	if err = datastore.Properties(context.TODO(), vm.datastore.Reference(), []string{"name"}, &mds); err != nil {
 		return err
 	}
 	log.Printf("[DEBUG] datastore: %#v", mds.Name)
@@ -178,7 +252,7 @@ func (vm *virtualMachine) createVirtualMachine(c *govmomi.Client) error {
 	})
 	configSpec.Files = &types.VirtualMachineFileInfo{VmPathName: fmt.Sprintf("[%s]", mds.Name)}
 
-	task, err := dcFolders.VmFolder.CreateVM(context.TODO(), configSpec, resourcePool, nil)
+	task, err := dcFolders.VmFolder.CreateVM(context.TODO(), configSpec, vm.resourcePool, nil)
 	if err != nil {
 		log.Printf("[ERROR] %s", err)
 	}
@@ -188,7 +262,7 @@ func (vm *virtualMachine) createVirtualMachine(c *govmomi.Client) error {
 		log.Printf("[ERROR] %s", err)
 	}
 
-	newVM, err := finder.VirtualMachine(context.TODO(), vm.name)
+	newVM, err := vm.finder.VirtualMachine(context.TODO(), vm.name)
 	if err != nil {
 		return err
 	}
@@ -207,76 +281,15 @@ func (vm *virtualMachine) createVirtualMachine(c *govmomi.Client) error {
 }
 
 // deployVirtualMchine deploys a new VirtualMachine.
-func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
-	var dc *object.Datacenter
+func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client, templateName string) error {
 	var err error
 
-	finder := find.NewFinder(c.Client, true)
-
-	if vm.datacenter != "" {
-		dc, err = finder.Datacenter(context.TODO(), vm.datacenter)
-		if err != nil {
-			return err
-		}
-	} else {
-		dc, err = finder.DefaultDatacenter(context.TODO())
-		if err != nil {
-			return err
-		}
-	}
-	finder = finder.SetDatacenter(dc)
-
-	template, err := finder.VirtualMachine(context.TODO(), vm.template)
-	if err != nil {
-		return err
-	}
-	log.Printf("[DEBUG] template: %#v", template)
-
-	var resourcePool *object.ResourcePool
-	if vm.resourcePool == "" {
-		if vm.cluster == "" {
-			resourcePool, err = finder.DefaultResourcePool(context.TODO())
-			if err != nil {
-				return err
-			}
-		} else {
-			resourcePool, err = finder.ResourcePool(context.TODO(), "*"+vm.cluster+"/Resources")
-			if err != nil {
-				return err
-			}
-		}
-	} else {
-		resourcePool, err = finder.ResourcePool(context.TODO(), vm.resourcePool)
-		if err != nil {
-			return err
-		}
-	}
-	log.Printf("[DEBUG] resource pool: %#v", resourcePool)
-
-	dcFolders, err := dc.Folders(context.TODO())
+	dcFolders, err := vm.datacenter.Folders(context.TODO())
 	if err != nil {
 		return err
 	}
 
-	var datastore *object.Datastore
-	if vm.datastore == "" {
-		datastore, err = finder.DefaultDatastore(context.TODO())
-		if err != nil {
-			return err
-		}
-	} else {
-		datastore, err = finder.Datastore(context.TODO(), vm.datastore)
-		if err != nil {
-			// TODO: datastore cluster support in govmomi finder function
-			datastore, err = findDatastore(c, dcFolders, template, resourcePool, vm.datastore)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	log.Printf("[DEBUG] datastore: %#v", datastore)
-
-	relocateSpec, err := createVMRelocateSpec(resourcePool, datastore, template)
+	relocateSpec, err := createVMRelocateSpec(vm.resourcePool, vm.datastore, vm.template)
 	if err != nil {
 		return err
 	}
@@ -287,7 +300,7 @@ func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 	networkConfigs := []types.CustomizationAdapterMapping{}
 	for _, network := range vm.networkInterfaces {
 		// network device
-		nd, err := createNetworkDevice(finder, network.label, "vmxnet3")
+		nd, err := createNetworkDevice(vm.finder, network.label, "vmxnet3")
 		if err != nil {
 			return err
 		}
@@ -358,7 +371,7 @@ func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 	}
 	log.Printf("[DEBUG] clone spec: %v", cloneSpec)
 
-	task, err := template.Clone(context.TODO(), dcFolders.VmFolder, vm.name, cloneSpec)
+	task, err := vm.template.Clone(context.TODO(), dcFolders.VmFolder, vm.name, cloneSpec)
 	if err != nil {
 		return err
 	}
@@ -368,7 +381,7 @@ func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 		return err
 	}
 
-	newVM, err := finder.VirtualMachine(context.TODO(), vm.name)
+	newVM, err := vm.finder.VirtualMachine(context.TODO(), vm.name)
 	if err != nil {
 		return err
 	}
@@ -387,86 +400,6 @@ func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 		}
 	}
 	return nil
-}
-
-// findDatastore finds Datastore object.
-func findDatastore(c *govmomi.Client, f *object.DatacenterFolders, vm *object.VirtualMachine, rp *object.ResourcePool, name string) (*object.Datastore, error) {
-	var datastore *object.Datastore
-	s := object.NewSearchIndex(c.Client)
-	ref, err := s.FindChild(context.TODO(), f.DatastoreFolder, name)
-	if err != nil {
-		return nil, err
-	}
-	log.Printf("[DEBUG] findDatastore: reference: %#v", ref)
-
-	mor := ref.Reference()
-	if mor.Type == "StoragePod" {
-		storagePod := object.NewFolder(c.Client, mor)
-
-		vmr := vm.Reference()
-		vmfr := f.VmFolder.Reference()
-		rpr := rp.Reference()
-		spr := storagePod.Reference()
-
-		var o mo.VirtualMachine
-		err := vm.Properties(context.TODO(), vmr, []string{"datastore"}, &o)
-		if err != nil {
-			return nil, err
-		}
-		ds := object.NewDatastore(c.Client, o.Datastore[0])
-		log.Printf("[DEBUG] findDatastore: datastore: %#v\n", ds)
-
-		devices, err := vm.Device(context.TODO())
-		if err != nil {
-			return nil, err
-		}
-
-		var key int
-		for _, d := range devices.SelectByType((*types.VirtualDisk)(nil)) {
-			key = d.GetVirtualDevice().Key
-			log.Printf("[DEBUG] findDatastore: virtual devices: %#v\n", d.GetVirtualDevice())
-		}
-
-		sps := types.StoragePlacementSpec{
-			Type: "clone",
-			Vm:   &vmr,
-			PodSelectionSpec: types.StorageDrsPodSelectionSpec{
-				StoragePod: &spr,
-			},
-			CloneSpec: &types.VirtualMachineCloneSpec{
-				Location: types.VirtualMachineRelocateSpec{
-					Disk: []types.VirtualMachineRelocateSpecDiskLocator{
-						types.VirtualMachineRelocateSpecDiskLocator{
-							Datastore:       ds.Reference(),
-							DiskBackingInfo: &types.VirtualDiskFlatVer2BackingInfo{},
-							DiskId:          key,
-						},
-					},
-					Pool: &rpr,
-				},
-				PowerOn:  false,
-				Template: false,
-			},
-			CloneName: "dummy",
-			Folder:    &vmfr,
-		}
-		log.Printf("[DEBUG] findDatastore: StoragePlacementSpec: %#v\n", sps)
-
-		srm := object.NewStorageResourceManager(c.Client)
-		rds, err := srm.RecommendDatastores(context.TODO(), sps)
-		if err != nil {
-			return nil, err
-		}
-		log.Printf("[DEBUG] findDatastore: recommendDatastores: %#v\n", rds)
-
-		spa := rds.Recommendations[0].Action[0].(*types.StoragePlacementAction)
-		datastore = object.NewDatastore(c.Client, spa.Destination)
-	} else {
-		datastore = object.NewDatastore(c.Client, mor)
-	}
-	log.Printf("[DEBUG] findDatastore: datastore: %#v", datastore)
-
-	return datastore, nil
 }
 
 // createNetworkDevice creates VirtualDeviceConfigSpec for Network Device.
