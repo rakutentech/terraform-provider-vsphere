@@ -3,6 +3,7 @@ package vsphere
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
@@ -334,7 +335,7 @@ func (vm *virtualMachine) deployVirtualMachine(c *govmomi.Client) error {
 	customSpec := types.CustomizationSpec{
 		Identity: &types.CustomizationLinuxPrep{
 			HostName: &types.CustomizationFixedName{
-				Name: vm.name,
+				Name: strings.Split(vm.name, ".")[0],
 			},
 			Domain:     vm.domain,
 			TimeZone:   vm.timeZone,
