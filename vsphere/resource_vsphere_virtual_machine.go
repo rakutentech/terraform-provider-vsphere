@@ -460,7 +460,15 @@ func resourceVSphereVirtualMachineDelete(d *schema.ResourceData, meta interface{
 func waitForNetworkingActive(client *govmomi.Client, datacenter, name string) resource.StateRefreshFunc {
 	return func() (interface{}, string, error) {
 		finder := find.NewFinder(client.Client, true)
-		dc, err := finder.Datacenter(context.TODO(), datacenter)
+		var dc *object.Datacenter
+		var err error
+
+		if datacenter != "" {
+			dc, err = finder.Datacenter(context.TODO(), datacenter)
+		} else {
+			dc, err = finder.DefaultDatacenter(context.TODO())
+		}
+
 		if err != nil {
 			log.Printf("[ERROR] %#v", err)
 			return nil, "", err
