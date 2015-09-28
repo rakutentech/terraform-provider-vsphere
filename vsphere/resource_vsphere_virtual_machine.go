@@ -351,19 +351,22 @@ func resourceVSphereVirtualMachineRead(d *schema.ResourceData, meta interface{})
 	log.Printf("[DEBUG] %#v", mvm.Summary.Config)
 	log.Printf("[DEBUG] %#v", mvm.Guest.Net)
 
-	networkInterfaces := make([]map[string]interface{}, len(mvm.Guest.Net))
-	for i, v := range mvm.Guest.Net {
-		log.Printf("[DEBUG] %#v", v.Network)
-		networkInterfaces[i] = make(map[string]interface{})
-		networkInterfaces[i]["label"] = v.Network
-		if len(v.IpAddress) > 0 {
-			log.Printf("[DEBUG] %#v", v.IpAddress[0])
-			networkInterfaces[i]["ip_address"] = v.IpAddress[0]
+	networkInterfaces := make([]map[string]interface{}, 0)
+	for _, v := range mvm.Guest.Net {
+		if v.DeviceConfigId >= 0 {
+			log.Printf("[DEBUG] %#v", v.Network)
+			networkInterface := make(map[string]interface{})
+			networkInterface["label"] = v.Network
+			if len(v.IpAddress) > 0 {
+				log.Printf("[DEBUG] %#v", v.IpAddress[0])
+				networkInterface["ip_address"] = v.IpAddress[0]
 
-			m := net.CIDRMask(v.IpConfig.IpAddress[0].PrefixLength, 32)
-			subnetMask := net.IPv4(m[0], m[1], m[2], m[3])
-			networkInterfaces[i]["subnet_mask"] = subnetMask.String()
-			log.Printf("[DEBUG] %#v", subnetMask.String())
+				m := net.CIDRMask(v.IpConfig.IpAddress[0].PrefixLength, 32)
+				subnetMask := net.IPv4(m[0], m[1], m[2], m[3])
+				networkInterface["subnet_mask"] = subnetMask.String()
+				log.Printf("[DEBUG] %#v", subnetMask.String())
+			}
+			networkInterfaces = append(networkInterfaces, networkInterface)
 		}
 	}
 	d.Set("network_interface", networkInterfaces)
