@@ -419,10 +419,14 @@ func resourceVSphereVirtualMachineRead(d *schema.ResourceData, meta interface{})
 	d.Set("datastore", rootDatastore)
 
 	// Initialize the connection info
-	d.SetConnInfo(map[string]string{
-		"type": "ssh",
-		"host": networkInterfaces[0]["ip_address"].(string),
-	})
+	if len(networkInterfaces) > 0 {
+		d.SetConnInfo(map[string]string{
+			"type": "ssh",
+			"host": networkInterfaces[0]["ip_address"].(string),
+		})
+	} else {
+		log.Printf("[ERROR] Could not find a default network interface")
+	}
 
 	return nil
 }
