@@ -1,6 +1,8 @@
 terraform-provider-vsphere
 ==========================
 
+## WARNING: This repository has been deprecated. Please use the official provider at [terraform-providers/terraform-provider-vsphere](https://github.com/terraform-providers/terraform-provider-vsphere).
+
 [![GitHub release](http://img.shields.io/github/release/rakutentech/terraform-provider-vsphere.svg?style=flat-square)][release]
 [![Wercker](http://img.shields.io/wercker/ci/54e197683e14329223213f6e.svg?style=flat-square)][wercker]
 [![Go Documentation](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)][godocs]
